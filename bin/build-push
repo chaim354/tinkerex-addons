@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Build and push the addon bundle image. Publishing this IS the addon deploy — no Rails redeploy is
+# needed, because the Rails app fetches from this container at runtime via ADDON_SOURCE_URL.
+#
+# After pushing, roll the accessory from the TINKEREX repo:
+#   kamal accessory reboot addons
+#
+# --platform linux/amd64 is required: the build box is arm64 (Apple Silicon), the Unraid host is
+# amd64. Matches `builder: arch: amd64` in tinkerex's config/deploy.yml.
+set -euo pipefail
+
+IMAGE="ghcr.io/chaim354/tinkerex-addons"
+TAG="$(git rev-parse HEAD)"
+
+: "${KAMAL_REGISTRY_PASSWORD:?set KAMAL_REGISTRY_PASSWORD (op item get 'ghcr.io' --fields password --reveal)}"
+echo "$KAMAL_REGISTRY_PASSWORD" | docker login ghcr.io -u chaim354 --password-stdin
+
+docker buildx build --platform linux/amd64 -t "$IMAGE:$TAG" -t "$IMAGE:latest" --push .
+echo "pushed $IMAGE:$TAG"
