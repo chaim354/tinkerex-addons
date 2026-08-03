@@ -21,6 +21,19 @@
     "description": "Parametric laser-cut / CNC boxes",
     "api_version": "1",
     "entry": "boxes.js",
-    "services": [ "boxes" ]
+    "services": [
+      "boxes"
+    ]
+  },
+  {
+    "key": "boxes-next",
+    "title": "Box Generator (bundle)",
+    "icon": "📦",
+    "description": "TRIAL — the runtime bundle, side by side with the shipped Ruby at /tools/boxes",
+    "api_version": "1",
+    "entry": "boxes.js",
+    "services": [
+      "boxes"
+    ]
   }
 ]
