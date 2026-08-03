@@ -24,6 +24,7 @@
     "services": [
       "boxes"
     ],
-    "layout": "wide"
+    "layout": "wide",
+    "states_key": "boxes"
   }
 ]
