@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Roll the published bundle image back to an earlier commit WITHOUT rebuilding it.
+#
+#   bin/rollback <git-sha>
+#
+# Every `bin/build-push` tags the image twice: `:<git-sha>` and `:latest`. The accessory pulls
+# `:latest`, so rolling back is retagging an image that already exists in the registry — no rebuild,
+# no dependence on the old source still building, and no change to tinkerex.
+#
+# WHY NOT PIN AN EXPLICIT TAG IN tinkerex's deploy.yml INSTEAD? That would give rollback and an
+# auditable "what is live" for free — but every addon deploy would then require editing and
+# committing to tinkerex, which is exactly the coupling this whole architecture removed. Keeping the
+# accessory on `:latest` preserves independent deploy; this script and the manifest's `version`
+# field recover the two things `:latest` otherwise costs.
+set -euo pipefail
+
+IMAGE="ghcr.io/chaim354/tinkerex-addons"
+SHA="${1:-}"
+
+if [ -z "$SHA" ]; then
+  echo "usage: bin/rollback <git-sha>"
+  echo
+  echo "Published versions (most recent first):"
+  git log --format='  %h  %ad  %s' --date=short -20
+  exit 64
+fi
+
+: "${KAMAL_REGISTRY_PASSWORD:?set KAMAL_REGISTRY_PASSWORD (op item get 'ghcr.io' --fields password --reveal)}"
+echo "$KAMAL_REGISTRY_PASSWORD" | docker login ghcr.io -u chaim354 --password-stdin
+
+# Resolve a short sha to the full one the image was tagged with, so `bin/rollback abc1234` works.
+FULL="$(git rev-parse "$SHA")"
+
+echo "pulling $IMAGE:$FULL"
+docker pull --platform linux/amd64 "$IMAGE:$FULL"
+docker tag "$IMAGE:$FULL" "$IMAGE:latest"
+docker push "$IMAGE:latest"
+
+cat <<MSG
+
+retagged $IMAGE:latest -> $FULL
+
+Now roll the accessory, from the tinkerex repo:
+  kamal accessory reboot addons
+
+Then confirm what is actually live:
+  ssh kamal1@192.168.1.95 "docker run --rm --network kamal curlimages/curl:latest -s http://tinkerex-addons/manifests.json" | grep version
+MSG

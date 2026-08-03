@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Refuse to publish a bundle the host's tests have never seen.
+#
+# THE FAILURE THIS EXISTS FOR. tinkerex's system tests run against a SNAPSHOT of each bundle in
+# test/fixtures/addons/<key>/, because CI has no checkout of this repo beside it and a test that
+# depends on a sibling repo gives zero coverage on a fresh clone. The snapshot buys hermetic CI and
+# costs drift: edit sections.js here, forget to mirror it there, and the host's tests stay green
+# while the shipped addon breaks. Nothing else catches that.
+#
+# Publish time is the right moment to catch it — it is the last point where both trees are on disk
+# and the person who edited one is still present.
+#
+# NOT A HARD GATE WHEN THE SIBLING IS ABSENT. This script also has to run on a machine that only
+# checked out this repo, and failing there would make the repo unusable rather than safe. So a
+# missing sibling WARNS; a present-but-different sibling FAILS. That asymmetry is deliberate: the
+# dangerous state is "both exist and disagree", not "only one exists".
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+HOST="${TINKEREX_PATH:-../tinkerex}"
+FIXTURES="$HOST/test/fixtures/addons"
+
+if [ ! -d "$FIXTURES" ]; then
+  echo "WARNING: no host fixtures at $FIXTURES — cannot check bundle/fixture drift."
+  echo "         Set TINKEREX_PATH, or check out tinkerex beside this repo, to enable the check."
+  exit 0
+fi
+
+fail=0
+for dir in addons/*/; do
+  key="$(basename "$dir")"
+  mirror="$FIXTURES/$key"
+
+  # A bundle the host does not snapshot is fine — `generators` is covered by the minimal
+  # host-pipeline fixture rather than a copy, and a trial alias has no fixture at all.
+  [ -d "$mirror" ] || continue
+
+  if ! diff -r -q "$dir" "$mirror" >/dev/null 2>&1; then
+    echo "FAIL: addons/$key differs from the host's test fixture ($mirror)"
+    # `|| true` is load-bearing: diff exits 1 when it finds differences — which is always, here —
+    # and with `set -euo pipefail` that aborted the script before the ALLOW_FIXTURE_DRIFT escape
+    # below could ever run. Found by testing the escape rather than assuming it worked.
+    diff -r -q "$dir" "$mirror" 2>&1 | sed 's/^/      /' || true
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  cat <<'MSG'
+
+The host's system tests would keep passing against a bundle you are about to change.
+Mirror the change into tinkerex's test/fixtures/addons/<key>/ and re-run its suite, or
+explain in the commit why the fixture should legitimately differ and re-run with
+ALLOW_FIXTURE_DRIFT=1.
+MSG
+  [ "${ALLOW_FIXTURE_DRIFT:-}" = "1" ] && { echo "ALLOW_FIXTURE_DRIFT=1 set — continuing anyway."; exit 0; }
+  exit 1
+fi
+
+echo "ok: every snapshotted bundle matches the host's fixture"

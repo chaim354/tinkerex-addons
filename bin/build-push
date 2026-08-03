@@ -12,8 +12,16 @@ set -euo pipefail
 IMAGE="ghcr.io/chaim354/tinkerex-addons"
 TAG="$(git rev-parse HEAD)"
 
+# Refuse to ship a bundle the host's system tests have never seen. See bin/check-fixture-drift for
+# why publish time is the right moment, and why an absent sibling checkout only warns.
+bin/check-fixture-drift
+
 : "${KAMAL_REGISTRY_PASSWORD:?set KAMAL_REGISTRY_PASSWORD (op item get 'ghcr.io' --fields password --reveal)}"
 echo "$KAMAL_REGISTRY_PASSWORD" | docker login ghcr.io -u chaim354 --password-stdin
 
-docker buildx build --platform linux/amd64 -t "$IMAGE:$TAG" -t "$IMAGE:latest" --push .
+docker buildx build --platform linux/amd64 \
+  --build-arg "BUNDLE_VERSION=$TAG" \
+  -t "$IMAGE:$TAG" -t "$IMAGE:latest" --push .
 echo "pushed $IMAGE:$TAG"
+echo "roll it:   kamal accessory reboot addons   (from the tinkerex repo)"
+echo "roll back: bin/rollback <earlier-sha>"
