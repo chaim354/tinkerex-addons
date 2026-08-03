@@ -61,9 +61,10 @@ Optional:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `pins` | object | Bare-specifier → filename map for the entry's own imports, e.g. `{"makerjs": "makerjs.js"}`. The host merges these into a per-page importmap alongside its own pins, so the entry can `import makerjs from "makerjs"` without a bundler. Every value must be a real file under `addons/<key>/`. |
+| `pins` | object | Bare-specifier → filename map for the entry's own imports, e.g. `{"makerjs": "makerjs.js"}`. The host merges these into a per-page importmap alongside its own pins, so the entry can `import makerjs from "makerjs"` without a bundler. Every value must be a real file under `addons/<key>/`. A RELATIVE import (`./foo.js`) needs no pin at all — pins exist for bare specifiers only. |
+| `services` | array of strings | Sidecar names this addon may reach through the host's proxy (see `ctx.serviceUrl` below). The host's own `ENV` says WHERE each named service lives (`<NAME>_SIDECAR_URL`); the manifest only says WHICH names this addon is allowed to ask for — a manifest-supplied URL would be an SSRF primitive aimed at the host's internal network, so the manifest never carries one. |
 
-Example (this repo's one addon today):
+Example (this repo's addons today):
 
 ```json
 [
@@ -81,6 +82,15 @@ Example (this repo's one addon today):
       "graham_scan": "graham_scan.js",
       "kdbush": "kdbush.js"
     }
+  },
+  {
+    "key": "boxes",
+    "title": "Box Generator",
+    "icon": "📦",
+    "description": "Parametric laser-cut / CNC boxes",
+    "api_version": "1",
+    "entry": "boxes.js",
+    "services": [ "boxes" ]
   }
 ]
 ```
@@ -98,7 +108,7 @@ The entry module's **only contract with the host** is a default export with a `m
 export default {
   mount(element, context) {
     // element: the empty <div> the host created for this addon to render into.
-    // context: { saveUrl, folders, defaultFolder, csrfToken } — see below.
+    // context: { saveUrl, serviceUrl, statesUrl, folders, defaultFolder, csrfToken } — see below.
   },
 }
 ```
@@ -108,15 +118,30 @@ export default {
 | Field | Type | Meaning |
 |---|---|---|
 | `saveUrl` | string | POST here (`multipart/form-data`) to save output — the addon's one save door (`Tools::AddonsController#create`, the same endpoint every addon uses). |
+| `serviceUrl` | string | A BASE, not a complete URL — append `${service}/${path}` yourself (e.g. `` `${ctx.serviceUrl}boxes/generate` ``) to call a sidecar named in this addon's own `services` manifest entry. Ends in `/`. POST bodies are forwarded as JSON (`Content-Type: application/json`) regardless of how you send them — the host re-serializes whatever Rails parsed your request into; GET query params are forwarded as a query string. A service the manifest doesn't declare, or one the host has no `<NAME>_SIDECAR_URL` for, is a 404 — there's no way to distinguish "unknown" from "unconfigured" from the response. POST calls need `X-CSRF-Token: ctx.csrfToken` (this route is not CSRF-exempt, unlike the asset proxy). |
+| `statesUrl` | string | GET this directly (it's a complete URL, nothing to append) for this addon's own saved `Maker::AddonState` rows, scoped to the current user: `[{id, name, data, updated_at, files: [{node_id, role}]}]`, newest first. This is how a bundle lists (and relinks the output files of) a user's prior saves — a bundle has no direct database access of its own. |
 | `folders` | array of `[label, id]` pairs | Library folders the user can save into, for populating a folder picker. |
 | `defaultFolder` | string | The folder id to preselect (the current project's folder, if one is set). |
-| `csrfToken` | string | Send as the `X-CSRF-Token` header on the save POST. |
+| `csrfToken` | string | Send as the `X-CSRF-Token` header on the save POST and on any `serviceUrl` POST. |
 
 The addon is **not** a Stimulus controller and must not assume any host JS framework beyond the one
-call to `mount`. See `addons/generators/generators.js` in this repo for a complete, working example:
-it builds its own DOM, wires its own event listeners, and POSTs a `FormData` body of `name`,
-`parent_node_id`, `data` (JSON), and `files` (JSON array of `{name, content_type, body}`) to
-`context.saveUrl`.
+call to `mount` — that also means it cannot rely on a HOST Stimulus controller auto-connecting to
+markup it injects (even though Stimulus's own MutationObserver technically would); do the equivalent
+behavior in plain JS instead (see `addons/boxes/gallery.js`'s `onerror` handler on the sample-photo
+`<img>`, which stands in for the host's `thumbfallback` controller).
+
+Two complete, working examples ship in this repo:
+
+- `addons/generators/generators.js` — builds its own DOM, wires its own event listeners, and POSTs a
+  `FormData` body of `name`, `parent_node_id`, `data` (JSON), and `files` (JSON array of
+  `{name, content_type, body}`) to `context.saveUrl`. No sidecar, no saved-state listing.
+- `addons/boxes/` — a larger addon split across several sibling modules (`boxes.js` is the entry; a
+  small client-side router swaps `gallery.js`/`editor.js`/`show.js` in and out of one mounted `<div>`).
+  Demonstrates `ctx.serviceUrl` (calling the `boxes` sidecar's `/generators`, `/generate`, and
+  `/sample/<key>` endpoints through the proxy), `ctx.statesUrl` (the saved-box rail and a
+  "made with this generator" list), rendering an SVG response straight into an `<img>` as a data URL
+  (no server-side rasterization), and preserving DOM state (`<details>` open/closed) across page
+  loads via `localStorage`.
 
 ## Deploying
 

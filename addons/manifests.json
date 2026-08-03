@@ -13,5 +13,14 @@
       "graham_scan": "graham_scan.js",
       "kdbush": "kdbush.js"
     }
+  },
+  {
+    "key": "boxes",
+    "title": "Box Generator",
+    "icon": "📦",
+    "description": "Parametric laser-cut / CNC boxes",
+    "api_version": "1",
+    "entry": "boxes.js",
+    "services": [ "boxes" ]
   }
 ]
