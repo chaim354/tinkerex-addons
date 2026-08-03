@@ -23,6 +23,7 @@
     "entry": "boxes.js",
     "services": [
       "boxes"
-    ]
+    ],
+    "layout": "wide"
   }
 ]
