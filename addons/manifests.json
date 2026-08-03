@@ -3,7 +3,7 @@
     "key": "generators",
     "title": "Generators",
     "icon": "✏️",
-    "description": "Parametric 2D drawings → SVG (laser & CNC)",
+    "description": "INDEPENDENT-DEPLOY PROOF — republished without touching Rails",
     "api_version": "1",
     "entry": "generators.js",
     "pins": {
