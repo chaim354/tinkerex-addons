@@ -15,17 +15,6 @@
     }
   },
   {
-    "key": "boxes",
-    "title": "Box Generator",
-    "icon": "📦",
-    "description": "Parametric laser-cut / CNC boxes",
-    "api_version": "1",
-    "entry": "boxes.js",
-    "services": [
-      "boxes"
-    ]
-  },
-  {
     "key": "boxes-next",
     "title": "Box Generator (bundle)",
     "icon": "📦",
