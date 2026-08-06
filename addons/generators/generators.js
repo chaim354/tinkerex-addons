@@ -1,5 +1,6 @@
 import materialTestGrid from "./material_test_grid.js"
 import { saveWithOverwrite } from "./save.js"
+import { mountFolderField } from "./folder_field.js"
 
 // The Generators addon. Its only contract with the host is `mount(element, context)` — no Stimulus,
 // no host framework. Adding a generator is a module + a line here, and no Ruby anywhere. The markup
@@ -29,9 +30,12 @@ export default {
           <label class="generator-name-label">Name
             <input data-role="name" type="text" required placeholder="e.g. 3mm birch test">
           </label>
-          <label class="generator-folder-label">Save into
-            <select data-role="folder"></select>
-          </label>
+          <!-- A <div>, NOT the <label> its siblings use: mountFolderField may render a <button>
+               here, and a <label> wrapping a button re-dispatches the click — the chooser would
+               open and instantly reopen. The <select> shape never had that problem. -->
+          <div class="generator-folder-label"><span>Save into</span>
+            <span data-role="folder-field"></span>
+          </div>
           <button type="button" data-role="save" class="generator-save">Save to library</button>
           <p class="muted" data-role="status"></p>
         </aside>
@@ -46,11 +50,7 @@ export default {
     for (const gen of REGISTRY) {
       $("picker").add(new Option(gen.title, gen.key))
     }
-    for (const [label, id] of ctx.folders) {
-      const opt = new Option(label, id)
-      if (id === ctx.defaultFolder) opt.selected = true
-      $("folder").add(opt)
-    }
+    const folderField = mountFolderField($("folder-field"), ctx)
 
     const values = () => Object.fromEntries(
       [...$("fields").querySelectorAll("[data-param]")].map((i) =>
@@ -99,7 +99,7 @@ export default {
       const svg = render()
       const body = new FormData()
       body.append("name", name)
-      body.append("parent_node_id", $("folder").value)
+      body.append("parent_node_id", folderField.value())
       body.append("data", JSON.stringify({ generator: current().key, params: values() }))
       body.append("files", JSON.stringify([
         { name: `${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.svg`,
