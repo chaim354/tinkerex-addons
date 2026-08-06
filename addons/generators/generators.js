@@ -1,4 +1,5 @@
 import materialTestGrid from "./material_test_grid.js"
+import { saveWithOverwrite } from "./save.js"
 
 // The Generators addon. Its only contract with the host is `mount(element, context)` — no Stimulus,
 // no host framework. Adding a generator is a module + a line here, and no Ruby anywhere. The markup
@@ -104,10 +105,11 @@ export default {
         { name: `${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.svg`,
           content_type: "image/svg+xml", body: svg },
       ]))
-      const res = await fetch(ctx.saveUrl, {
-        method: "POST", body, headers: { "X-CSRF-Token": ctx.csrfToken },
-      })
-      $("status").textContent = res.ok ? "Saved." : "Save failed."
+      // Through saveWithOverwrite, not a bare fetch: a re-save under the same name is the ORDINARY
+      // way to iterate on a drawing (harbor-number-v4, tweaked and saved again), and it used to
+      // leave a second copy stranded at the project root. See save.js for the 409 contract.
+      const { res, cancelled } = await saveWithOverwrite(ctx.saveUrl, body, ctx.csrfToken)
+      $("status").textContent = cancelled ? "Not saved." : res.ok ? "Saved." : "Save failed."
     })
 
     buildFields()
