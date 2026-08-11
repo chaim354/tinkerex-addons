@@ -28,12 +28,23 @@
     "description": "Parametric laser-cut / CNC boxes",
     "api_version": "1",
     "entry": "boxes.js",
+    "min_host": 1,
     "services": [
       "boxes"
     ],
     "layout": "wide",
     "shares_states_with": [
       "boxes-next"
+    ],
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the box it draws — the cut sheet, and a compartment plan for trays — into the library folder you pick."
+      },
+      {
+        "name": "service:boxes",
+        "reasoning": "Draws every box: the boxes.py generator runs as a separate service, and its SVG is what the preview shows and what gets saved."
+      }
     ]
   },
   {
@@ -43,10 +54,21 @@
     "description": "TRIAL — the runtime bundle, side by side with the shipped Ruby at /tools/boxes",
     "api_version": "1",
     "entry": "boxes.js",
+    "min_host": 1,
     "services": [
       "boxes"
     ],
     "layout": "wide",
-    "states_key": "boxes"
+    "states_key": "boxes",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the box it draws — the cut sheet, and a compartment plan for trays — into the library folder you pick."
+      },
+      {
+        "name": "service:boxes",
+        "reasoning": "Draws every box: the boxes.py generator runs as a separate service, and its SVG is what the preview shows and what gets saved."
+      }
+    ]
   }
 ]
