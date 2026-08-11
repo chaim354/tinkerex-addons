@@ -24,7 +24,10 @@
     "services": [
       "boxes"
     ],
-    "layout": "wide"
+    "layout": "wide",
+    "shares_states_with": [
+      "boxes-next"
+    ]
   },
   {
     "key": "boxes-next",
