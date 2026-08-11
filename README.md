@@ -63,8 +63,14 @@ Optional:
 |---|---|---|
 | `pins` | object | Bare-specifier → filename map for the entry's own imports, e.g. `{"makerjs": "makerjs.js"}`. The host merges these into a per-page importmap alongside its own pins, so the entry can `import makerjs from "makerjs"` without a bundler. Every value must be a real file under `addons/<key>/`. A RELATIVE import (`./foo.js`) needs no pin at all — pins exist for bare specifiers only. |
 | `services` | array of strings | Sidecar names this addon may reach through the host's proxy (see `ctx.serviceUrl` below). The host's own `ENV` says WHERE each named service lives (`<NAME>_SIDECAR_URL`); the manifest only says WHICH names this addon is allowed to ask for — a manifest-supplied URL would be an SSRF primitive aimed at the host's internal network, so the manifest never carries one. |
+| `min_host` | integer | The lowest host `level` this bundle works against. A host below it lists the addon **greyed out with a reason**; a host that predates the key ignores it entirely — see the caveat under "The bundle itself". Must be a bare JSON number: `"1"` the string is silently ignored. |
+| `permissions` | array of objects | `{"name": …, "reasoning": …}`. **Displayed to the operator on the gallery card and the addon page, never enforced** — nothing on the server refuses a request because of it. It is where scope drift becomes visible in a deployment where republishing a bundle *is* the deploy. A bare string instead of an object is dropped silently. |
 
-Example (this repo's addons today):
+This table is not exhaustive — `layout`, `states_key`, `shares_states_with`, `version`, `author`,
+`license` and `homepage` are also read. `docs/addon-api-v1.md` in the tinkerex repo is the complete
+list.
+
+Example (abridged — `addons/manifests.json` is the real index):
 
 ```json
 [
@@ -75,13 +81,17 @@ Example (this repo's addons today):
     "description": "Parametric 2D drawings → SVG (laser & CNC)",
     "api_version": "1",
     "entry": "generators.js",
+    "min_host": 1,
     "pins": {
       "makerjs": "makerjs.js",
       "bezier-js": "bezier-js.js",
       "clone": "clone.js",
       "graham_scan": "graham_scan.js",
       "kdbush": "kdbush.js"
-    }
+    },
+    "permissions": [
+      { "name": "library:write", "reasoning": "Saves the drawing it generates as an SVG, into the library folder you pick." }
+    ]
   },
   {
     "key": "boxes",
@@ -113,7 +123,36 @@ export default {
 }
 ```
 
-`context` fields, as constructed by the host's `addon_controller.js` Stimulus controller:
+#### Talk to the host through the SDK, not through `context`
+
+The host pins an ES module, **`@maker/addon-sdk`**, into every addon page's importmap. It wraps the
+save door, the folder chooser, the states list and the sidecar proxy behind one surface, and — the
+reason to prefer it — it turns the host's refusals into **typed errors** (`NameTakenError`,
+`WouldReplaceError`, `ServiceUnavailableError`, …), so a failed save can say *why* instead of
+"Save failed.". Never vendor it, never add it to `pins`, never import it by path.
+
+```js
+import { host, NameTakenError } from "@maker/addon-sdk"
+```
+
+`host` is a **live binding** — read through it at call time; a top-level `const { files } = host`
+succeeds on first load and then silently serves a torn-down host after a Turbo re-mount.
+
+`addons/generators/` is the reference migration. **The full author-facing reference is
+`docs/addon-api-v1.md` in the tinkerex repo** — the manifest keys (including `min_host`,
+`permissions`, `states_key`), the SDK's signatures, the capability map and the error table all live
+there, and it is more current than the tables below.
+
+> **`min_host` only binds a host that understands it.** A bundle that imports the SDK cannot run on
+> a host published before the SDK existed: that host ignores `min_host`, lists the addon, loads the
+> entry module, and fails to resolve `@maker/addon-sdk` — the page reads "This tool failed to load".
+> Nothing in the bundle can detect or degrade around that. The recovery is `bin/rollback <sha>` in
+> this repo, which republishes an earlier bundle image.
+
+`context` fields, as constructed by the host's `addon_controller.js` Stimulus controller. **These
+are not deprecated** — the host keeps passing them for the life of `api_version: "1"` — but prefer
+the SDK, which exists so a future host can move the transport underneath a bundle without the
+bundle changing:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -132,9 +171,12 @@ behavior in plain JS instead (see `addons/boxes/gallery.js`'s `onerror` handler 
 
 Two complete, working examples ship in this repo:
 
-- `addons/generators/generators.js` — builds its own DOM, wires its own event listeners, and POSTs a
-  `FormData` body of `name`, `parent_node_id`, `data` (JSON), and `files` (JSON array of
-  `{name, content_type, body}`) to `context.saveUrl`. No sidecar, no saved-state listing.
+- `addons/generators/generators.js` — the **SDK reference migration**, and the smallest bundle here.
+  Builds its own DOM, wires its own event listeners, and saves through `host.files.save({name,
+  folderNodeId, data, files: [{name, contentType, body}], onReplace})` — no hand-rolled `FormData`,
+  no CSRF header, and a failed save reports the host's own reason rather than "Save failed.". Its
+  folder control (`folder_field.js`) uses `host.files.pickFolder()`. No sidecar, no saved-state
+  listing.
 - `addons/boxes/` — a larger addon split across several sibling modules (`boxes.js` is the entry; a
   small client-side router swaps `gallery.js`/`editor.js`/`show.js` in and out of one mounted `<div>`).
   Demonstrates `ctx.serviceUrl` (calling the `boxes` sidecar's `/generators`, `/generate`, and

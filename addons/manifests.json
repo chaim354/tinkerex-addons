@@ -6,13 +6,20 @@
     "description": "Parametric 2D drawings → SVG (laser & CNC)",
     "api_version": "1",
     "entry": "generators.js",
+    "min_host": 1,
     "pins": {
       "makerjs": "makerjs.js",
       "bezier-js": "bezier-js.js",
       "clone": "clone.js",
       "graham_scan": "graham_scan.js",
       "kdbush": "kdbush.js"
-    }
+    },
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the drawing it generates as an SVG, into the library folder you pick."
+      }
+    ]
   },
   {
     "key": "boxes",
