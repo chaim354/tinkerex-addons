@@ -179,11 +179,16 @@ Two complete, working examples ship in this repo:
   listing.
 - `addons/boxes/` — a larger addon split across several sibling modules (`boxes.js` is the entry; a
   small client-side router swaps `gallery.js`/`editor.js`/`show.js` in and out of one mounted `<div>`).
-  Demonstrates `ctx.serviceUrl` (calling the `boxes` sidecar's `/generators`, `/generate`, and
-  `/sample/<key>` endpoints through the proxy), `ctx.statesUrl` (the saved-box rail and a
-  "made with this generator" list), rendering an SVG response straight into an `<img>` as a data URL
-  (no server-side rasterization), and preserving DOM state (`<details>` open/closed) across page
-  loads via `localStorage`.
+  **The reference for the SDK's service plane, and the only bundle here that talks to a sidecar.** It
+  reaches the `boxes` sidecar's `/generators`, `/generate` and `/sample/<key>` endpoints through
+  `host.service.get`, `host.service.post` (carrying the debounced live preview's `AbortSignal`, so a
+  superseded render is cancelled rather than merely ignored) and `host.service.url` — the synchronous
+  builder, for the one job `get` structurally cannot do: pointing an `<img src>` at the proxy. It also
+  demonstrates `host.state.list()` (the saved-box rail and a "made with this generator" list),
+  rendering an SVG response straight into an `<img>` as a data URL (no server-side rasterization),
+  and preserving DOM state (`<details>` open/closed) across page loads via `localStorage`. Nothing in
+  it reads `ctx.serviceUrl` or `ctx.csrfToken` any more — the only raw `ctx` values left are the two
+  destination keys (`defaultFolder`, `defaultFolderLabel`), which have no SDK accessor by design.
 
 ## Deploying
 
