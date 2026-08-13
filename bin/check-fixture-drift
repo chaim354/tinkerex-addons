@@ -14,6 +14,20 @@
 # checked out this repo, and failing there would make the repo unusable rather than safe. So a
 # missing sibling WARNS; a present-but-different sibling FAILS. That asymmetry is deliberate: the
 # dangerous state is "both exist and disagree", not "only one exists".
+#
+# WHAT IS NOT CHECKED, AND WHY: `addons/manifests.json`. The comparison below is per-bundle
+# DIRECTORY, so the index itself falls outside it — deliberately, because the host's copy is NOT a
+# mirror and must not be made into one. It declares two synthetic addons of its own (`fixture`,
+# `sdk-fixture`), its `boxes` entry carries a `description` documenting the SNAPSHOT rather than the
+# product, and it omits `layout` and `permissions`, which only affect display. Requiring equality
+# would fail on all of that; requiring it on a chosen SUBSET of keys would be a second, arbitrary
+# definition of which manifest keys matter, living in a third place.
+#
+# WHAT THAT COSTS, PLAINLY: nothing in either repo asserts the version floor. `boxes` declares
+# `min_host: 3` here and no `min_host` at all in the fixture, and no test anywhere would notice them
+# disagreeing. Harmless as things stand — `Tools::AddonsController` never gates on `available?`, so
+# `min_host` decides whether the /tools CARD greys out and never whether the bundle loads, which is
+# equally why carrying it in the fixture would exercise nothing. Revisit if it ever gates more.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
