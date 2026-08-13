@@ -48,10 +48,10 @@
     ]
   },
   {
-    "key": "openscad-next",
-    "title": "OpenSCAD (bundle)",
+    "key": "openscad",
+    "title": "OpenSCAD",
     "icon": "🧊",
-    "description": "TRIAL — the runtime bundle, side by side with the shipped Ruby at /tools/openscad",
+    "description": "Parametric .scad + parameters → 3MF (bundled catalog, or bring your own)",
     "api_version": "1",
     "entry": "openscad.js",
     "min_host": 2,
