@@ -28,7 +28,7 @@
     "description": "Parametric laser-cut / CNC boxes",
     "api_version": "1",
     "entry": "boxes.js",
-    "min_host": 1,
+    "min_host": 3,
     "services": [
       "boxes"
     ],
