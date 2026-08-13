@@ -48,6 +48,37 @@
     ]
   },
   {
+    "key": "openscad-next",
+    "title": "OpenSCAD (bundle)",
+    "icon": "🧊",
+    "description": "TRIAL — the runtime bundle, side by side with the shipped Ruby at /tools/openscad",
+    "api_version": "1",
+    "entry": "openscad.js",
+    "min_host": 2,
+    "services": [
+      "openscad"
+    ],
+    "service_timeouts": {
+      "openscad": 90
+    },
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the model it renders as a 3MF, into the library folder you pick."
+      },
+      {
+        "name": "library:read",
+        "reasoning": "Reads the .scad you pick from your library, so its parameters can be offered and rendered."
+      },
+      {
+        "name": "service:openscad",
+        "reasoning": "Renders every model: OpenSCAD runs as a separate service, and its 3MF is what the preview shows and what gets saved."
+      }
+    ]
+  },
+  {
     "key": "boxes-next",
     "title": "Box Generator (bundle)",
     "icon": "📦",
