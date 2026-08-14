@@ -25,7 +25,7 @@ if [ -z "$SHA" ]; then
   exit 64
 fi
 
-: "${KAMAL_REGISTRY_PASSWORD:?set KAMAL_REGISTRY_PASSWORD (op item get 'ghcr.io' --fields password --reveal)}"
+: "${KAMAL_REGISTRY_PASSWORD:?not set. Resolve it from op://tinkerex/ghcr.io/password via bin/secret in the tinkerex repo — see \"Deploying\" in README.md for the exact line. Do NOT use \"op item get ghcr.io\": a service-account shell is scoped to the tinkerex vault and that unqualified name resolves to an EMPTY string, which docker login then rejects confusingly}"
 echo "$KAMAL_REGISTRY_PASSWORD" | docker login ghcr.io -u chaim354 --password-stdin
 
 # Resolve a short sha to the full one the image was tagged with, so `bin/rollback abc1234` works.
