@@ -193,9 +193,21 @@ Two complete, working examples ship in this repo:
 ## Deploying
 
 ```sh
-export KAMAL_REGISTRY_PASSWORD="$(op item get 'ghcr.io' --fields password --reveal)"
-bin/build-push
+KAMAL_REGISTRY_PASSWORD="$(../tinkerex/bin/secret KAMAL_REGISTRY_PASSWORD op://tinkerex/ghcr.io/password)" bin/build-push
 ```
+
+**Use the `op://tinkerex/…` reference, not `op item get 'ghcr.io'`.** An agent shell — and any
+shell authenticated as the service account — is scoped to the `tinkerex` vault, where that
+unqualified item name does not resolve. It does not fail loudly: it returns an **empty string**,
+and `docker login` then complains about credentials rather than about the lookup, sending you to
+debug the registry instead of the vault. Measured 2026-08-14: the old form returned 0 bytes, the
+`op://` form 40. (`bin/secret` prefers an already-exported non-empty value and otherwise reads
+1Password, so it works interactively and unattended alike.)
+
+This is one of the few places an environment variable really is the mechanism: unlike a `kamal
+deploy`, this repo has no `.kamal/secrets` for kamal to resolve, so the scripts read the variable
+directly. Prefer the single-command form above over `export`, so the value does not outlive the
+command that needs it.
 
 Then, **from the tinkerex repo** (this repo has no Kamal config of its own — the accessory is
 declared in tinkerex's `config/deploy.yml`):
@@ -203,6 +215,10 @@ declared in tinkerex's `config/deploy.yml`):
 ```sh
 kamal accessory reboot addons
 ```
+
+**`bin/build-push` does NOT roll the accessory.** It pushes the image and prints this line at the
+end; the container goes on serving the old bundle until the reboot above runs. Easy to stop before
+reading it.
 
 That's the whole deploy. **Publishing a bundle is the deploy — Rails is not redeployed, rebuilt, or
 even restarted.** `bin/build-push` tags the image with both the current git SHA and `latest`, builds
