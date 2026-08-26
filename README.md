@@ -225,6 +225,27 @@ even restarted.** `bin/build-push` tags the image with both the current git SHA 
 for `linux/amd64` (the build box is typically arm64/Apple Silicon; the Unraid host is amd64), and
 pushes to `ghcr.io/chaim354/tinkerex-addons`.
 
+### Which bundle is actually running — two readings, on purpose
+
+The accessory pulls `:latest`, and a tag can never answer that question: the OCI distribution API
+has no digest→tag reverse lookup, and `kamal accessory details` prints the run reference (`:latest`),
+not a digest. So the source commit is baked into the image twice, and both are worth keeping:
+
+```sh
+# over HTTP, from anywhere on the Kamal network
+ssh kamal1@192.168.1.95 "docker exec tinkerex-addons wget -q -O - http://127.0.0.1/version.json"
+
+# from the container's metadata, with no HTTP at all — the reading you need when nginx is the
+# thing that is wrong. Same mechanism tinkerex's bin/build-boxes-sidecar uses for its accessory.
+ssh kamal1@192.168.1.95 "docker inspect tinkerex-addons \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'"
+```
+
+Both carry the same value, from one variable in `bin/build-push` — including its `-dirty` suffix,
+which is set by `git status --porcelain` over what the image actually COPYs (`addons/`,
+`nginx.conf`, `Dockerfile`) rather than by `git describe --dirty`, which ignores untracked files
+that this image would happily ship.
+
 ## Licensing
 
 MIT (`LICENSE`). Permissive by construction: this image is built and pushed to a registry, which is
