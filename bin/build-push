@@ -12,6 +12,36 @@ set -euo pipefail
 IMAGE="ghcr.io/chaim354/tinkerex-addons"
 TAG="$(git rev-parse HEAD)"
 
+# PROVENANCE IS STAMPED TWICE, AND THE TWO READERS ARE NOT REDUNDANT. `version.json` (the
+# Dockerfile's BUNDLE_VERSION) answers "which bundle is running?" over HTTP; the OCI label below
+# answers the same question from `docker inspect` ON THE BOX, with no HTTP at all — which is the
+# reading you need exactly when nginx is the thing that is wrong, and the mechanism tinkerex's
+# bin/build-boxes-sidecar already uses for the sibling accessory:
+#
+#   docker inspect tinkerex-addons \
+#     --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+#
+# It read EMPTY here until 2026-08-25, so the two accessories answered that question by two
+# different mechanisms and a `docker inspect` sweep over both silently reported one of them as
+# unknown.
+#
+# ONE VALUE FEEDS BOTH, deliberately: two provenance stamps that can disagree are worse than one,
+# and they WOULD have diverged on the dirty case below.
+#
+# DO NOT SPELL THE DIRTY CHECK `git describe --dirty` — it consults TRACKED files only, while this
+# image COPYs addons/ FROM THE WORKING TREE and there is no .dockerignore, so an untracked
+# addons/boxes/scratch.js ships while `--dirty` still reports a clean SHA: a stamp that READS as
+# provenance and is not. `git status --porcelain` lists untracked files, so it decides.
+#
+# SCOPED TO WHAT THE IMAGE ACTUALLY CONTAINS (`addons/`, `nginx.conf`, `Dockerfile`), NOT the whole
+# tree: macOS keeps minting a repo-root `.DS_Store` that no COPY touches (tinkerex's CLAUDE.md
+# records the same nuisance), and a whole-tree check would stamp every build `-dirty` for a file
+# that is not in the image. A warning that is always on is a warning nobody reads.
+REVISION="$TAG"
+if [ -n "$(git status --porcelain -- addons nginx.conf Dockerfile)" ]; then
+  REVISION="$TAG-dirty"
+fi
+
 # Refuse to ship a bundle the host's system tests have never seen. See bin/check-fixture-drift for
 # why publish time is the right moment, and why an absent sibling checkout only warns.
 bin/check-fixture-drift
@@ -19,9 +49,13 @@ bin/check-fixture-drift
 : "${KAMAL_REGISTRY_PASSWORD:?not set. Resolve it from op://tinkerex/ghcr.io/password via bin/secret in the tinkerex repo — see \"Deploying\" in README.md for the exact line. Do NOT use \"op item get ghcr.io\": a service-account shell is scoped to the tinkerex vault and that unqualified name resolves to an EMPTY string, which docker login then rejects confusingly}"
 echo "$KAMAL_REGISTRY_PASSWORD" | docker login ghcr.io -u chaim354 --password-stdin
 
+# The SHA tag carries $REVISION too, so a dirty build is never published under the clean SHA that
+# `bin/rollback <sha>` resolves — a rollback to a tag that lied about its contents is the failure
+# the suffix exists to prevent. A clean build tags exactly as it always did.
 docker buildx build --platform linux/amd64 \
-  --build-arg "BUNDLE_VERSION=$TAG" \
-  -t "$IMAGE:$TAG" -t "$IMAGE:latest" --push .
-echo "pushed $IMAGE:$TAG"
+  --build-arg "BUNDLE_VERSION=$REVISION" \
+  --label "org.opencontainers.image.revision=$REVISION" \
+  -t "$IMAGE:$REVISION" -t "$IMAGE:latest" --push .
+echo "pushed $IMAGE:$REVISION"
 echo "roll it:   kamal accessory reboot addons   (from the tinkerex repo)"
 echo "roll back: bin/rollback <earlier-sha>"
