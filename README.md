@@ -160,7 +160,7 @@ bundle changing:
 | `serviceUrl` | string | A BASE, not a complete URL — append `${service}/${path}` yourself (e.g. `` `${ctx.serviceUrl}boxes/generate` ``) to call a sidecar named in this addon's own `services` manifest entry. Ends in `/`. POST bodies are forwarded as JSON (`Content-Type: application/json`) regardless of how you send them — the host re-serializes whatever Rails parsed your request into; GET query params are forwarded as a query string. A service the manifest doesn't declare, or one the host has no `<NAME>_SIDECAR_URL` for, is a 404 — there's no way to distinguish "unknown" from "unconfigured" from the response. POST calls need `X-CSRF-Token: ctx.csrfToken` (this route is not CSRF-exempt, unlike the asset proxy). |
 | `statesUrl` | string | GET this directly (it's a complete URL, nothing to append) for this addon's own saved `Maker::AddonState` rows, scoped to the current user: `[{id, name, data, updated_at, files: [{node_id, role}]}]`, newest first. This is how a bundle lists (and relinks the output files of) a user's prior saves — a bundle has no direct database access of its own. |
 | `folders` | array of `[label, id]` pairs | Library folders the user can save into, for populating a folder picker. |
-| `defaultFolder` | string | The folder id to preselect (the current project's folder, if one is set). |
+| `defaultFolder` | string | The folder id to preselect: the folder the tool was opened from, the reopened file's folder, or where this tool last saved. |
 | `csrfToken` | string | Send as the `X-CSRF-Token` header on the save POST and on any `serviceUrl` POST. |
 
 The addon is **not** a Stimulus controller and must not assume any host JS framework beyond the one
