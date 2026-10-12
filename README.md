@@ -260,3 +260,9 @@ Run it directly:
 ```sh
 ./test/no_gpl_in_bundle_image_test.sh
 ```
+
+**`LICENSE` covers this repo's own code, not the third-party modules vendored beside it.**
+`addons/generators/` ships five npm packages — makerjs (Apache-2.0), bezier-js, clone and
+graham_scan (MIT), kdbush (ISC) — and their notices sit beside them in
+`addons/generators/LICENSE-makerjs.md`, which the image COPYs along with the rest of `addons/`. A new
+vendored dependency gets its notice in its addon's directory, in the same change.
