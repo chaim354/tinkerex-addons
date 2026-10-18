@@ -15,7 +15,8 @@ IMAGE="ghcr.io/chaim354/tinkerex-addons"
 # Dockerfile's BUNDLE_VERSION) answers "which bundle is running?" over HTTP; the OCI label below
 # answers the same question from `docker inspect` ON THE BOX, with no HTTP at all — which is the
 # reading you need exactly when nginx is the thing that is wrong, and the mechanism tinkerex's
-# bin/build-boxes-sidecar already uses for the sibling accessory:
+# bin/build-sidecar already uses for every sidecar accessory (which also bakes the same revision
+# into the image as /revision, read back through `kamal accessory exec` — the version.json twin):
 #
 #   docker inspect tinkerex-addons \
 #     --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
