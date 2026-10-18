@@ -1,0 +1,78 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Scaffold a new addon: addons/<key>/<key>.js (a minimal working SDK bundle, from
+# templates/addon.js) plus its entry in addons/manifests.json.
+#
+#   bin/new-addon <key> "<Title>" "<one-line description>" [--icon <glyph>]
+#
+# THE MANIFEST RULES ARE THE HOST'S, NOT THIS SCRIPT'S. It writes an entry that satisfies them, then
+# asks tinkerex's own `addons:check` (Maker::Addons::Registry's definition) whether it does. A copy of
+# the rules here would drift from the ones the host enforces. The check runs when a tinkerex checkout
+# is beside this repo (TINKEREX_PATH, default ../tinkerex) and is skipped with a notice otherwise.
+require "json"
+require "optparse"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).parent.expand_path
+ADDONS = ROOT.join("addons")
+INDEX = ADDONS.join("manifests.json")
+TEMPLATE = ROOT.join("templates/addon.js")
+KEY = /\A[a-z][a-z0-9-]*\z/
+USAGE = 'usage: bin/new-addon <key> "<Title>" "<one-line description>" [--icon <glyph>]'
+# The bundler context an inherited RUBYOPT/BUNDLE_GEMFILE would force on tinkerex's binstub — strip it,
+# or the child boots against the wrong Gemfile (tinkerex CLAUDE.md §14j).
+BUNDLER_ENV = %w[BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLE_LOCKFILE BUNDLER_VERSION BUNDLER_SETUP RUBYOPT RUBYLIB]
+              .to_h { |name| [ name, nil ] }
+
+# EVERYTHING HERE IS UTF-8, SAID EXPLICITLY RATHER than inherited from the locale. Under a C/US-ASCII
+# locale (a bare shell, an agent's tool) Ruby tags ARGV and every File.read as US-ASCII, and
+# manifests.json carries emoji: JSON.parse refuses the read outright, and a non-ASCII title or --icon
+# fails in to_json AFTER addons/<key>/ exists, stranding a folder the next run refuses. So the reads
+# below name their encoding, and the arguments are retagged and checked before anything is written.
+ARGV.map! { |arg| arg.dup.force_encoding(Encoding::UTF_8) }
+abort "new-addon: arguments must be valid UTF-8" unless ARGV.all?(&:valid_encoding?)
+
+icon = "🛠️"
+OptionParser.new { |o| o.on("--icon GLYPH") { |v| icon = v } }.parse!(ARGV)
+key, title, description = ARGV
+abort USAGE unless ARGV.size == 3 && [ key, title, description ].all? { |s| !s.to_s.strip.empty? }
+unless KEY.match?(key)
+  abort "new-addon: key #{key.inspect} must be lowercase letters, digits and dashes, starting with a letter " \
+        "(it becomes the /tools/<key> URL and the addons/<key>/ folder)"
+end
+
+index = JSON.parse(INDEX.read(encoding: Encoding::UTF_8))
+abort "new-addon: #{key.inspect} is already in addons/manifests.json" if index.any? { |m| m.is_a?(Hash) && m["key"] == key }
+dir = ADDONS.join(key)
+abort "new-addon: addons/#{key}/ already exists" if dir.exist?
+
+dir.mkpath
+dir.join("#{key}.js").write(TEMPLATE.read(encoding: Encoding::UTF_8).gsub("__KEY__", key).gsub("__TITLE_JSON__", title.to_json))
+index << {
+  "key" => key, "title" => title, "icon" => icon, "description" => description,
+  "api_version" => "1", "entry" => "#{key}.js",
+  # Level 1 is the SDK itself — files.save and files.pickFolder, everything the template uses.
+  "min_host" => 1,
+  "permissions" => [ { "name" => "library:write",
+                       "reasoning" => "Saves the file it makes into the library folder you pick." } ]
+}
+# pretty_generate + newline round-trips this file byte-identically today (checked 2026-10-17), so the
+# entries above the new one do not churn in the diff. test/new_addon_test.sh pins that on BYTES.
+INDEX.write("#{JSON.pretty_generate(index)}\n")
+puts "Created addons/#{key}/#{key}.js and its entry in addons/manifests.json."
+
+tinkerex = Pathname.new(ENV.fetch("TINKEREX_PATH", ROOT.join("../tinkerex").to_s)).expand_path
+if tinkerex.join("bin/rails").executable?
+  ok = system(BUNDLER_ENV, "bin/rails", "addons:check[#{ADDONS}]", chdir: tinkerex.to_s)
+  abort "new-addon: the files were written, but addons:check failed (above)." unless ok
+else
+  puts "Skipped addons:check — no tinkerex checkout at #{tinkerex} (set TINKEREX_PATH)."
+end
+
+puts <<~NEXT
+
+  Try it:  in #{tinkerex}, run bin/dev and open http://localhost:3000/tools/#{key}
+           Development reads this checkout directly, so an edit shows on reload.
+  Ship it: bin/publish
+NEXT
