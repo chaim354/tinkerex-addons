@@ -52,6 +52,36 @@ grep -q '"Widget"' addons/widget/widget.js || fail "title not substituted into t
 ! grep -q '__TITLE_JSON__\|__KEY__' addons/widget/widget.js || fail "a template placeholder survived"
 pass "placeholders substituted"
 
+# --- a title is DATA: backslashes and quotes reach the bundle as the same string, never as code ---
+# A STRING replacement to gsub re-reads \\, \1 and \& and so undoes to_json's escaping. Two shapes,
+# each caught by a different assertion: the first breaks the parse, the second parses fine and
+# injects a statement, which only the round-trip sees. Both titles run before failing, so one
+# mutation run shows each assertion carrying weight.
+if command -v node >/dev/null; then
+  bad=0 i=0
+  for title in 'C:\1 "x\" \' 'x\"; globalThis.PWNED = 1; //'; do
+    i=$((i + 1))
+    TINKEREX_PATH=/nonexistent bin/new-addon "quoted-$i" "$title" "d" >/dev/null || fail "new-addon refused the title [$title]"
+    cp "addons/quoted-$i/quoted-$i.js" "$work/quoted-$i.mjs"
+    node --check "$work/quoted-$i.mjs" 2>/dev/null \
+      || { echo "FAIL: the title [$title] made the bundle invalid JS" >&2; bad=1; continue; }
+    # Evaluate the generated `const TITLE = …` line as JavaScript and compare BYTES with the input.
+    printf '%s' "$title" > "$work/title.expected"
+    node -e '
+      const line = require("fs").readFileSync(process.argv[1], "utf8").split("\n").find((l) => l.startsWith("const TITLE = "))
+      if (!line) { console.error("no `const TITLE = ` line"); process.exit(1) }
+      process.stdout.write(String(require("vm").runInNewContext(`${line}\nTITLE`, {})))
+    ' "addons/quoted-$i/quoted-$i.js" > "$work/title.actual" \
+      || { echo "FAIL: could not evaluate the TITLE line for [$title]" >&2; bad=1; continue; }
+    cmp -s "$work/title.expected" "$work/title.actual" \
+      || { echo "FAIL: the title did not round-trip: gave [$title], the bundle says [$(cat "$work/title.actual")]" >&2; bad=1; }
+  done
+  [ "$bad" = 0 ] || exit 1
+  pass "a title with backslashes and quotes round-trips into the bundle as data"
+else
+  echo "skip - no node; the title round-trip did not run"
+fi
+
 # --- refusals write nothing ---
 snapshot="$(cat addons/manifests.json; echo x)"
 refuse() {
@@ -70,6 +100,22 @@ mkdir addons/orphan
 refuse "directory already exists" orphan "O" "d"
 refuse "missing description" lonely "L"
 pass "refuses a bad key, a taken key, an existing directory and missing arguments, writing nothing"
+
+# --- a run that fails between the folder and the index leaves nothing a retry would refuse ---
+# A read-only index makes the write fail AFTER addons/<key>/ exists — the half-state an interrupt
+# leaves. The permission is restored before any assertion, so a failure cannot strand it.
+listing="$(ls -A addons)"
+snapshot="$(cat addons/manifests.json; echo x)"
+chmod a-w addons/manifests.json
+status=0
+TINKEREX_PATH=/nonexistent bin/new-addon stranded "Stranded" "d" >/dev/null 2>&1 || status=$?
+chmod u+w addons/manifests.json
+[ "$status" -ne 0 ] || fail "wrote through a read-only manifests.json"
+[ ! -e addons/stranded ] || fail "addons/stranded/ was left behind by a failed index write — a retry refuses it"
+[ "$(cat addons/manifests.json; echo x)" = "$snapshot" ] || fail "manifests.json changed on a failed write"
+[ "$(ls -A addons)" = "$listing" ] || fail "a failed write left something in addons/: $(ls -A addons)"
+TINKEREX_PATH=/nonexistent bin/new-addon stranded "Stranded" "d" >/dev/null || fail "the retry was refused"
+pass "a failed index write removes the folder it made, and the retry succeeds"
 
 # --- the sibling half: the host's own check accepts what we generate ---
 TINKEREX="${TINKEREX_PATH:-$REPO/../tinkerex}"
