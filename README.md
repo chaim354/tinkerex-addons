@@ -289,7 +289,7 @@ ssh kamal1@192.168.1.95 "docker exec tinkerex-addons wget -q -O - http://127.0.0
 # from the container's metadata, with no HTTP at all — the reading you need when nginx is the
 # thing that is wrong. Same mechanism tinkerex's bin/build-boxes-sidecar uses for its accessory.
 ssh kamal1@192.168.1.95 "docker inspect tinkerex-addons \
-  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'"
+  --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}'"
 ```
 
 Both carry the same value, from one variable in `bin/build-push`, which takes it from `bin/revision`
