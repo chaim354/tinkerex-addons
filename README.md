@@ -287,7 +287,7 @@ not a digest. So the source commit is baked into the image twice, and both are w
 ssh kamal1@192.168.1.95 "docker exec tinkerex-addons wget -q -O - http://127.0.0.1/version.json"
 
 # from the container's metadata, with no HTTP at all — the reading you need when nginx is the
-# thing that is wrong. Same mechanism tinkerex's bin/build-boxes-sidecar uses for its accessory.
+# thing that is wrong. Same mechanism tinkerex's bin/build-sidecar uses for every sidecar accessory.
 ssh kamal1@192.168.1.95 "docker inspect tinkerex-addons \
   --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}'"
 ```
