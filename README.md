@@ -34,23 +34,48 @@ addons/
     ...                 # any pinned dependency modules the entry imports
 Dockerfile              # nginx:1.27-alpine, COPYs addons/ in, nothing else
 nginx.conf               # static file serving + Cache-Control: no-cache + /health
-bin/build-push            # buildx build --platform linux/amd64, push to ghcr, tag = git SHA + latest
+bin/new-addon             # scaffold addons/<key>/<key>.js + its manifests.json entry (Quick start, below)
+bin/publish               # check, preflight, build-push, reboot, verify — the whole deploy (see Deploying)
+bin/revision              # the revision an image is published under: HEAD SHA, or <SHA>-dirty
+bin/build-push            # buildx build --platform linux/amd64, push to ghcr, tag = bin/revision + latest
+templates/addon.js        # the bundle bin/new-addon starts from — outside addons/, so never shipped
 test/no_gpl_in_bundle_image_test.sh   # CLAUDE.md §9 guard — see below
+test/new_addon_test.sh    # bin/new-addon's contract, run in a throwaway copy
 ```
 
 ## Adding or changing an addon
+
+### Quick start
+
+```sh
+bin/new-addon <key> "<Title>" "<one-line description>" [--icon <glyph>]
+```
+
+That writes `addons/<key>/<key>.js` — a small working bundle, from `templates/addon.js`, that saves
+a file into the library through the SDK — and appends its entry to `addons/manifests.json`. Then it
+runs tinkerex's own `addons:check` over the result, when a tinkerex checkout sits beside this repo
+(`TINKEREX_PATH`, default `../tinkerex`; without one it says it skipped the check).
+
+To try it, run tinkerex's `bin/dev` and open `http://localhost:3000/tools/<key>`. Development reads
+this checkout's `addons/` directly and caches neither the index nor the bundle, so an edit shows on
+reload. When it works, `bin/publish` ships it (see "Deploying").
 
 ### `manifests.json`
 
 An array of manifest objects. `Maker::Addons::Registry` (in the tinkerex repo) fetches this once
 per cache TTL (5 minutes) and builds one `Addon` per entry that passes validation. A manifest that
-fails validation is silently dropped — one bad addon must never take `/tools` down.
+fails validation is skipped, never raised on — one bad addon must never take `/tools` down — so in
+production it simply does not appear (the host's log names it). To find out why, ask the host:
+tinkerex's `bin/rails "addons:check[PATH]"`, with PATH this repo's `addons/`, names each skipped
+manifest and its reason, plus any `entry` or `pins` file that is not on disk; `bin/new-addon` and
+`bin/publish` both run it for you. In development, `/tools` lists the same problems at the top of
+the page.
 
 Required fields (all must be present, or the entry is skipped):
 
 | Field | Type | Meaning |
 |---|---|---|
-| `key` | string | Unique addon id. Used in the URL (`/tools/addons/:key`) and as the subdirectory under `addons/` this manifest's assets live in. |
+| `key` | string | Unique addon id. Used in the URL (`/tools/:key`) and as the subdirectory under `addons/` this manifest's assets live in. |
 | `title` | string | Display name in the `/tools` gallery. |
 | `icon` | string | An emoji or short glyph shown next to the title. |
 | `description` | string | One-line description shown under the title. |
@@ -193,6 +218,31 @@ Two complete, working examples ship in this repo:
 ## Deploying
 
 ```sh
+bin/publish
+```
+
+One command, run with a tinkerex checkout beside this repo (`TINKEREX_PATH`, default `../tinkerex`),
+where the accessory is declared. It stops at the first step that fails:
+
+1. **Check.** tinkerex's `addons:check` refuses a manifest the host would skip, or an `entry` or
+   `pins` file that is not there.
+2. **Preflight.** tinkerex's `bin/secrets-preflight` refuses a secret that resolves to an empty
+   string, which kamal itself cannot notice (tinkerex's `docs/invariants/deploy-secrets.md`).
+3. **Build and push.** `bin/build-push`, unchanged — fixture-drift check, `linux/amd64` build, push
+   to ghcr. It uses an exported `KAMAL_REGISTRY_PASSWORD` if there is one, and otherwise resolves it
+   through tinkerex's `bin/secret` for that one command, never exported.
+4. **Roll.** `kamal accessory reboot addons`, from tinkerex.
+5. **Verify.** It reads the running container's `version.json` and fails unless it is the revision
+   just pushed (`bin/revision`). On 2026-10-07 a ghcr tag move was acknowledged, then silently
+   reverted a minute later, and a reboot in that window redeployed the old image while reporting
+   success. If this step fails, re-run `bin/publish`: a fresh push persisted then.
+
+`/tools` then picks up manifest changes within the registry's 5-minute cache TTL; the cache is
+deliberately not busted.
+
+### What `bin/publish` runs, if you need a step on its own
+
+```sh
 KAMAL_REGISTRY_PASSWORD="$(../tinkerex/bin/secret KAMAL_REGISTRY_PASSWORD op://tinkerex/ghcr.io/password)" bin/build-push
 ```
 
@@ -218,12 +268,13 @@ kamal accessory reboot addons
 
 **`bin/build-push` does NOT roll the accessory.** It pushes the image and prints this line at the
 end; the container goes on serving the old bundle until the reboot above runs. Easy to stop before
-reading it.
+reading it — which is why `bin/publish` runs both, then checks what is live (next section).
 
-That's the whole deploy. **Publishing a bundle is the deploy — Rails is not redeployed, rebuilt, or
-even restarted.** `bin/build-push` tags the image with both the current git SHA and `latest`, builds
-for `linux/amd64` (the build box is typically arm64/Apple Silicon; the Unraid host is amd64), and
-pushes to `ghcr.io/chaim354/tinkerex-addons`.
+**Publishing a bundle is the deploy — Rails is not redeployed, rebuilt, or even restarted.**
+`bin/build-push` tags the image with both `bin/revision` (the current git SHA, `-dirty` when what the
+image COPYs differs from it — next section) and `latest`, builds for `linux/amd64` (the build box
+is typically arm64/Apple Silicon; the Unraid host is amd64), and pushes to
+`ghcr.io/chaim354/tinkerex-addons`.
 
 ### Which bundle is actually running — two readings, on purpose
 
@@ -241,10 +292,18 @@ ssh kamal1@192.168.1.95 "docker inspect tinkerex-addons \
   --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'"
 ```
 
-Both carry the same value, from one variable in `bin/build-push` — including its `-dirty` suffix,
-which is set by `git status --porcelain` over what the image actually COPYs (`addons/`,
-`nginx.conf`, `Dockerfile`) rather than by `git describe --dirty`, which ignores untracked files
-that this image would happily ship.
+Both carry the same value, from one variable in `bin/build-push`, which takes it from `bin/revision`
+— including its `-dirty` suffix, which is set by `git status --porcelain` over what the image
+actually COPYs (`addons/`, `nginx.conf`, `Dockerfile`) rather than by `git describe --dirty`, which
+ignores untracked files that this image would happily ship.
+
+`bin/publish`'s verify step reads the same `version.json` through kamal, from tinkerex, and compares
+it with `bin/revision` — the one definition both scripts share, so the check cannot disagree with
+the stamp:
+
+```sh
+bin/kamal accessory exec addons --reuse "cat /usr/share/nginx/html/version.json"
+```
 
 ## Licensing
 

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# ONE COMMAND FROM "I CHANGED A BUNDLE" TO "IT IS LIVE". Stops at the first failure:
+#
+#   1. tinkerex's addons:check — refuse to ship a manifest the host would skip, or an entry/pin file
+#      that is not there. The host's own rules (Maker::Addons::Registry), never a copy.
+#   2. tinkerex's bin/secrets-preflight — `kamal accessory reboot` expands secrets through Ruby
+#      backticks, which discard exit status, so an unreadable secret becomes an EMPTY one silently
+#      (tinkerex docs/invariants/deploy-secrets.md).
+#   3. bin/build-push — fixture-drift check, build, push, unchanged.
+#   4. kamal accessory reboot addons — from tinkerex, where the accessory is declared.
+#   5. VERIFY the running container's version.json IS the revision just pushed. On 2026-10-07 a ghcr
+#      tag move was acknowledged, read back for a minute, then silently reverted at the origin, and
+#      a reboot inside that window redeployed the OLD image while reporting success.
+#
+# Then /tools picks up manifest changes within Maker::Addons::Registry::TTL (5 minutes) — the cache
+# is deliberately not busted (spec 2026-10-17 §2).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+TINKEREX="${TINKEREX_PATH:-../tinkerex}"
+if [ ! -x "$TINKEREX/bin/rails" ]; then
+  echo "publish: no tinkerex checkout at $TINKEREX — the addons accessory is declared there." >&2
+  echo "         Clone chaim354/tinkerex beside this repo, or set TINKEREX_PATH." >&2
+  exit 1
+fi
+TINKEREX="$(cd "$TINKEREX" && pwd)"
+ADDONS="$(pwd)/addons"
+
+# An inherited bundler context would boot tinkerex against the wrong Gemfile (tinkerex §14j).
+in_tinkerex() {
+  (cd "$TINKEREX" && env -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH -u BUNDLE_LOCKFILE -u BUNDLER_VERSION \
+    -u BUNDLER_SETUP -u RUBYOPT -u RUBYLIB "$@")
+}
+
+echo "==> 1/5 checking manifests"
+in_tinkerex bin/rails "addons:check[$ADDONS]"
+
+echo "==> 2/5 preflighting secrets"
+in_tinkerex bin/secrets-preflight
+
+REVISION="$(bin/revision)"
+echo "==> 3/5 building and pushing $REVISION"
+# XTRACE OFF BEFORE THE SECRET, NOT AFTER. Under `bash -x bin/publish` the env-prefix line below is
+# traced AFTER expansion — `+ KAMAL_REGISTRY_PASSWORD=<the token> bin/build-push` on stderr. The
+# braces + 2>/dev/null swallow the trace of this `set +x` itself; it is not turned back on.
+{ set +x; } 2>/dev/null
+# `:+set` expands to "set" or nothing — NEVER the value (a `:-` presence test echoes the secret).
+if [ -n "${KAMAL_REGISTRY_PASSWORD:+set}" ]; then
+  bin/build-push
+else
+  # The README's single-command form: scoped to this one child, never exported. An empty result
+  # is caught by build-push's own `${KAMAL_REGISTRY_PASSWORD:?…}`, which prints no value.
+  KAMAL_REGISTRY_PASSWORD="$(in_tinkerex bin/secret KAMAL_REGISTRY_PASSWORD op://tinkerex/ghcr.io/password)" bin/build-push
+fi
+
+echo "==> 4/5 rolling the addons accessory"
+in_tinkerex bin/kamal accessory reboot addons
+
+echo "==> 5/5 verifying what is running"
+# Only the version field is kept; on a miss NOTHING from the buffer is printed — a diagnostic branch
+# that dumps captured output is how this repo has leaked secrets before. Re-run the exec by hand.
+# `-q` drops only kamal's "App Host:" header; the command's own output is always printed (kamal
+# 2.12.0 `puts_by_host`). The Dockerfile writes version.json as {"version":"<revision>"}, no spaces.
+running="$(in_tinkerex bin/kamal accessory exec addons --reuse -q "cat /usr/share/nginx/html/version.json" 2>/dev/null \
+  | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+if [ "$running" != "$REVISION" ]; then
+  echo "publish: the accessory is serving '${running:-unreadable}', not $REVISION." >&2
+  echo "         The registry tag may not have persisted (it reverted once, 2026-10-07)." >&2
+  echo "         Re-run bin/publish — a fresh push persisted then. To look yourself, in tinkerex:" >&2
+  echo "           bin/kamal accessory exec addons --reuse \"cat /usr/share/nginx/html/version.json\"" >&2
+  exit 1
+fi
+echo "==> live: tinkerex-addons is serving $REVISION. /tools picks up manifest changes within 5 minutes."
