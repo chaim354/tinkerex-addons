@@ -25,7 +25,7 @@ IMAGE="ghcr.io/chaim354/tinkerex-addons"
 # unknown.
 #
 # ONE VALUE FEEDS BOTH, deliberately: two provenance stamps that can disagree are worse than one,
-# and they WOULD have diverged on the dirty case below.
+# and they WOULD have diverged on the dirty case (bin/revision).
 #
 # The dirty rule lives in bin/revision, shared with bin/publish's verify step.
 REVISION="$(bin/revision)"
