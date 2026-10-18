@@ -61,7 +61,11 @@ refuse() {
 }
 refuse "uppercase key" Widget2 "W" "d";            [ ! -e addons/Widget2 ] || fail "dir made for bad key"
 refuse "key starting with a digit" 2widget "W" "d"
+# Its folder moved aside, so this refusal is the INDEX check's alone: with addons/generators/ present,
+# the "already exists" refusal below catches the same call, and deleting the index check stayed green.
+mv addons/generators "$work/generators.aside"
 refuse "key already in the index" generators "G" "d"
+mv "$work/generators.aside" addons/generators
 mkdir addons/orphan
 refuse "directory already exists" orphan "O" "d"
 refuse "missing description" lonely "L"
