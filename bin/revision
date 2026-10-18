@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# THE REVISION A BUNDLE IMAGE IS PUBLISHED UNDER: the HEAD SHA, or <SHA>-dirty when anything the
+# image COPYs differs from HEAD. ONE definition — bin/build-push stamps it into the image and its
+# tags, bin/publish verifies the running accessory against it — because two copies of the dirty rule
+# would drift, and a verify step that disagrees with the stamp reports a failed deploy over a good one.
+#
+# DO NOT SPELL THE DIRTY CHECK `git describe --dirty` — it consults TRACKED files only, while this
+# image COPYs addons/ FROM THE WORKING TREE and there is no .dockerignore, so an untracked
+# addons/boxes/scratch.js ships while `--dirty` still reports a clean SHA: a stamp that READS as
+# provenance and is not. `git status --porcelain` lists untracked files, so it decides.
+#
+# SCOPED TO WHAT THE IMAGE ACTUALLY CONTAINS (`addons/`, `nginx.conf`, `Dockerfile`), NOT the whole
+# tree: macOS keeps minting a repo-root `.DS_Store` that no COPY touches (tinkerex's CLAUDE.md
+# records the same nuisance), and a whole-tree check would stamp every build `-dirty` for a file
+# that is not in the image. A warning that is always on is a warning nobody reads.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+revision="$(git rev-parse HEAD)"
+if [ -n "$(git status --porcelain -- addons nginx.conf Dockerfile)" ]; then
+  revision="$revision-dirty"
+fi
+echo "$revision"
