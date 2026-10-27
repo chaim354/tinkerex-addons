@@ -305,6 +305,11 @@ the stamp:
 bin/kamal accessory exec addons --reuse "cat /usr/share/nginx/html/version.json"
 ```
 
+## Security
+
+Found a vulnerability? Report it privately through the repository's Security tab, as
+[`SECURITY.md`](SECURITY.md) describes, rather than in a public issue.
+
 ## Licensing
 
 MIT (`LICENSE`). Permissive by construction: this image is built and pushed to a registry, which is
