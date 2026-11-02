@@ -17,6 +17,7 @@ const LABEL_FONT = 3       // mm, svg.js's default text size
 const CROSSHAIR = 1.5      // crosshair length in hole diameters
 const HOLE_SEGMENTS = 48   // points on a hole's ring in the plate mesh
 const CIRCLE_SEGMENTS = 96 // points on a circle outline's ring
+const MIN_WALL = 0.5       // mm of material a hole must leave to the outline (see validateParams)
 
 // ---- positions (all centred on 0,0) ------------------------------------------------------------
 
@@ -210,20 +211,55 @@ export function build(p) {
 const show = (v) => (Number.isFinite(v) ? num(v) : String(v))
 const whole = (v) => Number.isInteger(v) && v >= 1
 
-// The signed distance from a point to a rounded rectangle's edge (negative inside), the standard
-// rounded-box SDF: how far a hole centre sits from the outline, arcs included.
-function roundedRectDistance(x, y, outline) {
-  const r = outline.cornerRadius
-  const qx = Math.abs(x - outline.cx) - (outline.width / 2 - r)
-  const qy = Math.abs(y - outline.cy) - (outline.height / 2 - r)
-  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r
+function segmentDistance(px, py, [ax, ay], [bx, by]) {
+  const dx = bx - ax, dy = by - ay
+  const l2 = dx * dx + dy * dy
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
+// Ray casting; a point on the boundary may answer either way, which the wall rule's margin absorbs.
+function insidePolygon(px, py, points) {
+  let inside = false
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i], [xj, yj] = points[j]
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+// THE WALL IS MEASURED AGAINST THE POLYGON THE PLATE IS CUT FROM, NEVER THE IDEAL SHAPE: the
+// thinnest material between any hole's circle and the segments of `points` (the ring
+// extrudePolygon extrudes — a rounded corner's 8 chords, a circle outline's 96-gon). The exact
+// arc or circle sits OUTSIDE its inscribed chords by the sagitta, so a wall measured against the
+// ideal reads thicker than what is built; a hole ring that pokes past a chord opens the mesh
+// (measured: a 0.0048 r sagitta was enough). Negative when a hole crosses the outline — and a
+// hole whose CENTRE is outside counts its whole distance as negative, because distance-to-boundary
+// is positive on both sides: a bounding-box corner hole falls clean outside a corner radius large
+// enough to clamp the rectangle into a stadium, and reads as a thick wall without this.
+function thinnestWall(holes, diameter, points) {
+  let wall = Infinity
+  for (const h of holes) {
+    let dist = Infinity
+    for (let i = 0; i < points.length; i++) {
+      const d = segmentDistance(h.x, h.y, points[i], points[(i + 1) % points.length])
+      if (d < dist) dist = d
+    }
+    const signed = insidePolygon(h.x, h.y, points) ? dist : -dist
+    if (signed < wall) wall = signed
+  }
+  return wall - diameter / 2
 }
 
 /**
  * The messages that keep a pattern drillable, in the order the form shows them; empty when the
  * params are sound. Overlap on a bolt circle is the exact chord test, pcd * sin(pi / count) >
- * diameter (the arc-length approximation is looser for small counts); a corner radius is refused
- * when its arc would cut into a hole, which an extrusion cannot survive.
+ * diameter (the arc-length approximation is looser for small counts). Every outline, plate or not,
+ * must leave MIN_WALL of material between each hole and the outline polygon (thinnestWall): a
+ * margin of 0 makes the hole ring tangent to the outline and the extrusion OPEN (a 2x2 grid gave
+ * 32 open edges, a lone hole in a circle outline equalled the outline, 300 open edges and no
+ * volume), and a template whose hole breaks its outline is wrong on paper too. One rule covers the
+ * straight edges, the corner chords and the circle's facets alike, so it names the real cause.
  */
 export function validateParams(p) {
   const out = []
@@ -263,11 +299,13 @@ export function validateParams(p) {
     if (p.outline !== "rect" && p.outline !== "circle") out.push(`Unknown outline ${JSON.stringify(String(p.outline))}.`)
     if (!(p.margin >= 0)) out.push("Margin must be 0 or more, or a hole breaks the outline.")
     if (p.outline === "rect" && !(p.cornerRadius >= 0)) out.push("Corner radius must be 0 or more.")
-    if (p.outline === "rect" && d > 0 && p.margin >= 0 && p.cornerRadius > 0 && out.length === 0) {
+    if (out.length === 0) {
       const holes = holesFor(p)
-      const outline = outlineFor({ kind: "rect", holes, diameter: d, margin: p.margin, cornerRadius: p.cornerRadius })
-      if (outline && holes.some((h) => -roundedRectDistance(h.x, h.y, outline) <= d / 2)) {
-        out.push(`A corner radius of ${show(outline.cornerRadius)} mm cuts into a hole; reduce it or raise the margin.`)
+      const outline = outlineFor({ kind: p.outline, holes, diameter: d, margin: p.margin, cornerRadius: p.cornerRadius })
+      const wall = outline ? thinnestWall(holes, d, outline.points) : Infinity
+      if (wall < MIN_WALL - 1e-9) {
+        out.push(`A hole comes within ${show(Math.max(wall, 0))} mm of the outline; raise the margin ` +
+          `(or reduce the corner radius) so at least ${show(MIN_WALL)} mm of material is left.`)
       }
     }
   }

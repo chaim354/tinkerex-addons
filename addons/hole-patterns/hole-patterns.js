@@ -12,7 +12,7 @@
 import { host } from "@maker/addon-sdk"
 import { layout, h, number, select, checkbox, status, debounce, fmt } from "./lib/ui.js"
 import { fitCanvas, renderMesh } from "./lib/preview3d.js"
-import { toBinaryStl, stats } from "./lib/mesh.js"
+import { toBinaryStl, stats, validate } from "./lib/mesh.js"
 import { METRIC, UNIFIED } from "./lib/fasteners_data.js"
 import { mountSavePanel } from "./lib/save_panel.js"
 import { slug } from "./lib/save_helpers.js"
@@ -161,6 +161,11 @@ export default {
       const problems = validateParams(p)
       if (problems.length) throw new Error(problems[0])
       const { svg, mesh } = build(p)
+      // The last guard before an STL leaves: validateParams' wall rule should make this unreachable,
+      // and the next geometry bug must still not save a broken plate into the library.
+      if (p.plate && mesh && !validate(mesh).watertight) {
+        throw new Error("The plate came out with open edges and was not saved; raise the margin or reduce the corner radius and try again.")
+      }
       const base = slug(name) || "hole-pattern"
       const files = [{ name: `${base}.svg`, contentType: "image/svg+xml", body: svg }]
       if (p.plate && mesh) files.push({ name: `${base}.stl`, contentType: "model/stl", body: toBinaryStl(mesh, name) })

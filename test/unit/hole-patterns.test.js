@@ -246,9 +246,70 @@ test("validateParams refuses the rest: counts, pitches, the diameter, the margin
   assert.deepEqual(validateParams({ ...p, outline: "none", margin: -1 }), [], "no outline, no margin to check")
 })
 
-test("validateParams refuses a corner radius that cuts into a corner hole", () => {
-  const p = { ...defaults(), pattern: "grid", nx: 2, ny: 2, pitchX: 20, pitchY: 20, margin: 0 }
+// ---- the wall between a hole and the outline -----------------------------------------------------
+
+const WALL = /A hole comes within [\d.]+ mm of the outline; raise the margin \(or reduce the corner radius\) so at least 0\.5 mm of material is left\./
+
+test("D1: a zero margin makes the hole ring tangent to the outline and the plate open; it is refused", () => {
+  const gridP = { ...defaults(), pattern: "grid", nx: 2, ny: 2, pitchX: 20, pitchY: 20, margin: 0, cornerRadius: 0, plate: true }
+  const problems = validateParams(gridP)
+  assert.equal(problems.length, 1, problems.join(" | "))
+  assert.match(problems[0], WALL)
+  assert.match(problems[0], /within 0 mm/)
+  assert.ok(!validate(build(gridP).mesh).watertight, "the refused plate really is open")
+
+  const lone = { ...defaults(), pattern: "line", count: 1, outline: "circle", margin: 0, plate: true }
+  assert.match(validateParams(lone)[0], WALL)
+  const loneMesh = build(lone).mesh
+  assert.ok(!validate(loneMesh).watertight || stats(loneMesh).volume === 0, "a hole equal to its outline is no plate")
+
+  // the rule binds the template too, plate or not
+  assert.match(validateParams({ ...gridP, plate: false })[0], WALL)
+  assert.match(validateParams({ ...lone, plate: false })[0], WALL)
+})
+
+test("D1: a 0.5 mm margin with square corners on a 2x2 grid is accepted and the plate is watertight", () => {
+  const p = { ...defaults(), pattern: "grid", nx: 2, ny: 2, pitchX: 20, pitchY: 20, margin: 0.5, cornerRadius: 0, plate: true }
+  assert.deepEqual(validateParams(p), [])
+  assert.deepEqual(validate(build(p).mesh), CLOSED)
+  assert.match(validateParams({ ...p, margin: 0.49 })[0], WALL, "just under the wall is refused")
+})
+
+test("D2: a zero margin beside a straight edge names the wall, not a corner radius 20 mm away", () => {
+  const p = { ...defaults(), margin: 0 } // bolt 6 on PCD 50, corner radius 3: the tangency is on a straight edge
+  const problems = validateParams(p)
+  assert.equal(problems.length, 1, problems.join(" | "))
+  assert.match(problems[0], WALL)
+  assert.doesNotMatch(problems[0], /corner radius of/i)
+})
+
+test("D3: a wall thinner than a rounded corner's chord sagitta is refused, since the plate is cut from the chords", () => {
+  const p = {
+    ...defaults(), pattern: "bolt", count: 8, pcd: 95.42964034015313, startDeg: 107.94446328654885,
+    size: "#8-32", fit: "normal", outline: "rect", margin: 1.9709666554117575, cornerRadius: 47.44602630380541,
+    plate: true, thickness: 3.9073287340579554,
+  }
+  const problems = validateParams(p)
+  assert.equal(problems.length, 1, problems.join(" | "))
+  assert.match(problems[0], WALL)
+  assert.ok(!validate(build(p).mesh).watertight, "the refused plate really is open")
+})
+
+test("the wall rule is one rule for the arcs too: a corner radius cutting into a corner hole is refused by it", () => {
+  const p = { ...defaults(), pattern: "grid", nx: 2, ny: 2, pitchX: 20, pitchY: 20, margin: 0.5 }
   assert.deepEqual(validateParams({ ...p, cornerRadius: 0 }), [])
-  assert.match(validateParams({ ...p, cornerRadius: 5 })[0], /corner radius/i)
+  assert.match(validateParams({ ...p, cornerRadius: 5 })[0], WALL)
   assert.deepEqual(validateParams({ ...p, margin: 5, cornerRadius: 3 }), [], "a margin makes room for the arc")
+  const circle = { ...defaults(), outline: "circle", margin: 1 }
+  assert.deepEqual(validateParams(circle), [])
+  assert.deepEqual(validate(build({ ...circle, plate: true }).mesh), CLOSED)
+})
+
+test("a corner hole whose centre falls clean outside a stadium-clamped outline is refused, not read as a thick wall", () => {
+  // corner radius 50 clamps to half of 25.4, a circle of radius 12.7; the holes sit at radius 14.14
+  const p = { ...defaults(), pattern: "grid", nx: 2, ny: 2, pitchX: 20, pitchY: 20, margin: 1, cornerRadius: 50, plate: true }
+  const problems = validateParams(p)
+  assert.equal(problems.length, 1, problems.join(" | "))
+  assert.match(problems[0], WALL)
+  assert.ok(!validate(build(p).mesh).watertight, "the refused plate really is open")
 })
