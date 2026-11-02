@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Every check this repo has, in one command: the unit tests over the pure modules (node:test, no
+# dependency, no build step — package.json exists only to make .js files ESM for node), then the two
+# shell tests. A failing step stops the run with a non-zero exit.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "== unit tests (node --test test/unit/) =="
+node --test test/unit/
+
+echo "== test/new_addon_test.sh =="
+bash test/new_addon_test.sh
+
+echo "== test/no_gpl_in_bundle_image_test.sh =="
+bash test/no_gpl_in_bundle_image_test.sh
+
+echo "bin/test: all green"
