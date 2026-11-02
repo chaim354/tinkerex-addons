@@ -235,7 +235,10 @@ export function validateParams(p = {}) {
   const m = p.module;
   if (!finite(m) || m <= 0) messages.push("Module must be a number greater than 0 mm.");
   const a = p.pressureAngleDeg === undefined ? 20 : p.pressureAngleDeg;
-  if (!finite(a) || a <= 0 || a >= 45) messages.push("Pressure angle must be between 0° and 45° (20° or 14.5° are the standard ones).");
+  // 30° is the ceiling, not 45°: past ~32° a rack's trapezoids overlap at the root and the mesh
+  // stops being watertight while nothing refuses it (found by the capped review). The UI offers only
+  // 20° and 14.5°; this guards a hand-edited saved state fed back through `load`.
+  if (!finite(a) || a <= 0 || a > 30) messages.push("Pressure angle must be between 0° and 30° (20° or 14.5° are the standard ones).");
 
   const checkWheel = (teeth, label) => {
     if (!wholeTeeth(teeth)) {
