@@ -79,7 +79,9 @@ export default {
       // inlining it is inlining our own markup. The host sizes an <img> in this panel, not an <svg>.
       svgBox.innerHTML = built.svg
       const svgEl = svgBox.querySelector("svg")
-      if (svgEl) svgEl.setAttribute("style", "display: block; width: 100%; height: auto; max-height: 72vh;")
+      // On a white sheet, like every other cut file here: the panel's own background is dark under
+      // the dark theme and the black outlines would vanish into it.
+      if (svgEl) svgEl.setAttribute("style", "display: block; width: 100%; height: auto; max-height: 72vh; background: #fff; border-radius: 6px; padding: 8px; box-sizing: border-box;")
       const { block, p } = built
       const lines = block.lines.filter((l) => l.d).length
       let note = `${fmt(block.width)} × ${fmt(block.height)} mm · ${lines} ${lines === 1 ? "line" : "lines"}`

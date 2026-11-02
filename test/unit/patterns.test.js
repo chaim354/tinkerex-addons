@@ -5,7 +5,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
-  livingHinge, honeycomb, slotGrid, patternSvg, patternStats, defaults, validateParams, KINDS,
+  livingHinge, honeycomb, slotGrid, patternSvg, patternStats, defaults, validateParams, cutCount, KINDS, MAX_CUTS,
 } from "../../addons/patterns/patterns_core.js"
 
 const EPS = 1e-9
@@ -206,3 +206,73 @@ test("the generators refuse what validateParams refuses rather than looping", ()
   assert.throws(() => honeycomb({ ...HONEY, cellAcrossFlats: 0 }), /cell/i)
   assert.throws(() => slotGrid({ ...GRID, pitchY: 0 }), /pitch/i)
 })
+
+// A gap as long as the slot leaves a strip no column's slot crosses — a full-width uncut rib, and a
+// hinge that cannot flex. The stagger covers an even column's gap with an odd column's slot only
+// while gap < slotLength.
+test("a living hinge whose gap is not shorter than its slot length is refused, naming the rib", () => {
+  const sentence = "Gap between slots (25 mm) must be shorter than the slot length (20 mm), or uncut ribs run across the hinge."
+  assert.deepEqual(validateParams("living-hinge", { ...HINGE, gap: 25 }), [sentence])
+  assert.ok(validateParams("living-hinge", { ...HINGE, gap: 20 }).some((m) => /uncut ribs/.test(m)), "equal is refused too")
+  assert.deepEqual(validateParams("living-hinge", { ...HINGE, gap: 5 }), [])
+  assert.deepEqual(validateParams("living-hinge", { ...HINGE, gap: 19.5 }), [])
+  assert.throws(() => livingHinge({ ...HINGE, gap: 25 }), (e) => e.message === sentence)
+})
+
+// THE CUT CAP. A 1000×1000 honeycomb at cell 0.5 / wall 0.1 is 3.1 million cells; an SVG of that
+// size freezes the page. The count is arithmetic — from the band and the pitches — so the refusal
+// costs nothing, and the generator throws the very sentence the status line shows.
+const CAP_RE = /^This pattern would need ([\d,]+) cuts; the limit is 20,000\. Use a larger cell, slot or pitch, or a smaller panel\.$/
+
+test("MAX_CUTS is 20,000", () => {
+  assert.equal(MAX_CUTS, 20000)
+})
+
+test("a honeycomb past the cap is refused by validateParams, and the generator throws the same sentence", () => {
+  const big = { width: 1000, height: 1000, margin: 5, cellAcrossFlats: 0.5, wall: 0.1 }
+  const messages = validateParams("honeycomb", big)
+  assert.equal(messages.length, 1, messages.join("; "))
+  const m = CAP_RE.exec(messages[0])
+  assert.ok(m, messages[0])
+  const n = Number(m[1].replace(/,/g, ""))
+  assert.ok(n > 3_000_000 && n < 3_300_000, `${n} cells`)
+  assert.equal(n, cutCount("honeycomb", big))
+  assert.throws(() => honeycomb(big), (e) => e.message === messages[0])
+})
+
+test("the cap holds for the other two kinds as well", () => {
+  const hinge = { width: 1000, height: 1000, margin: 5, slotLength: 2, slotWidth: 0.5, gap: 1, rowPitch: 1 }
+  const grid = { width: 1000, height: 1000, margin: 5, slotW: 1, slotH: 1, pitchX: 2, pitchY: 2 }
+  for (const [kind, params, make] of [["living-hinge", hinge, livingHinge], ["slot-grid", grid, slotGrid]]) {
+    const messages = validateParams(kind, params)
+    assert.equal(messages.length, 1, `${kind}: ${messages.join("; ")}`)
+    assert.match(messages[0], CAP_RE)
+    assert.ok(cutCount(kind, params) > MAX_CUTS)
+    assert.throws(() => make(params), (e) => e.message === messages[0])
+  }
+  // 495 × 495 grid positions, exactly: the sentence carries the arithmetic count with separators.
+  assert.match(validateParams("slot-grid", grid)[0], /would need 245,025 cuts/)
+})
+
+test("a 300×300 honeycomb at cell 2 is accepted, built in full, and counted exactly", () => {
+  const ok = { width: 300, height: 300, margin: 5, cellAcrossFlats: 2, wall: 0.5 }
+  assert.deepEqual(validateParams("honeycomb", ok), [])
+  const { cuts } = honeycomb(ok)
+  assert.ok(cuts.length > 10_000 && cuts.length <= MAX_CUTS, `${cuts.length} cells`)
+  assert.equal(cuts.length, cutCount("honeycomb", ok))
+})
+
+test("cutCount is the number of cuts the generator builds, for every kind", () => {
+  assert.equal(cutCount("living-hinge", HINGE), 45)
+  for (const [kind, make] of Object.entries(GENERATORS)) {
+    const params = kind === "living-hinge" ? HINGE : kind === "honeycomb" ? HONEY : GRID
+    assert.equal(cutCount(kind, params), make().cuts.length, kind)
+    assert.equal(cutCount(kind, defaults(kind)), generateDefault(kind).cuts.length, `${kind} defaults`)
+  }
+  assert.throws(() => cutCount("living-hinge", { ...HINGE, rowPitch: 0 }), /pitch/i, "an invalid lattice is refused, not counted")
+})
+
+function generateDefault(kind) {
+  const d = defaults(kind)
+  return kind === "living-hinge" ? livingHinge(d) : kind === "honeycomb" ? honeycomb(d) : slotGrid(d)
+}

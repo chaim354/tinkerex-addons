@@ -143,7 +143,9 @@ export default {
           box.innerHTML = layoutSvg(item, { mode: p.mode })
           const svg = box.querySelector("svg")
           if (svg) {
-            svg.setAttribute("style", "display: block; width: 100%; height: auto; max-height: 72vh;")
+            // On a white sheet, like every other diagram here: the panel's own background is dark
+            // under the dark theme and the black strokes would vanish into it.
+            svg.setAttribute("style", "display: block; width: 100%; height: auto; max-height: 72vh; background: #fff; border-radius: 6px; padding: 8px; box-sizing: border-box;")
             svg.setAttribute("role", "img")
             svg.setAttribute("aria-label", caption)
           }

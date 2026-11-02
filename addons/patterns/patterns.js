@@ -51,8 +51,10 @@ export default {
 
     // --- The preview: the SVG inline (so the bytes shown are the bytes saved, guide aside) and a
     // muted line with the count. The host styles `.generator-preview img`, not an inline <svg>, so
-    // the same sizing goes on the element by hand.
-    const stage = h("div", { dataset: { role: "stage" } })
+    // the same sizing goes on the element by hand. The stage is a WHITE SHEET, as in gears and
+    // hole-patterns: the hairlines are black, and multiplied onto the dark theme's stage they
+    // all but vanished — so no mix-blend-mode on the svg, a sheet behind it instead.
+    const stage = h("div", { dataset: { role: "stage" }, style: "background: #fff; border-radius: 6px; padding: 8px;" })
     const countLine = h("p", { class: "muted", dataset: { role: "count" }, style: "margin: 8px 0 0; font-size: 13px;" })
     preview.append(stage, countLine)
 
@@ -125,7 +127,7 @@ export default {
         stage.innerHTML = patternSvg(kind, p, { guide: true })
         const svg = stage.querySelector("svg")
         if (svg) {
-          svg.setAttribute("style", "display: block; width: 100%; height: auto; max-height: 72vh; mix-blend-mode: multiply;")
+          svg.setAttribute("style", "display: block; width: 100%; height: auto; max-height: 72vh;")
           svg.setAttribute("role", "img")
           svg.setAttribute("aria-label", `${labelOf(kind)} preview`)
         }

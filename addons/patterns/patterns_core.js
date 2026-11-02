@@ -22,6 +22,11 @@ const DEFAULTS = Object.freeze({
   "slot-grid": Object.freeze({ width: 100, height: 50, margin: 5, slotW: 20, slotH: 4, pitchX: 25, pitchY: 8 }),
 })
 
+// THE CUT CAP. A 1000×1000 honeycomb at cell 0.5 / wall 0.1 is 3.1 million cells, and an SVG of
+// that size freezes the page. Every generator's count is known arithmetically from the band and
+// the pitches before a single point is built, so the refusal is free and names the number.
+export const MAX_CUTS = 20000
+
 // Floating-point slack for "fits" decisions: a slot whose far edge lands 1e-12 past the margin by
 // rounding is a slot that fits, not one to drop. Far below anything a laser resolves.
 const EPS = 1e-9
@@ -51,14 +56,29 @@ const LABELS = {
   slotW: "Slot width", slotH: "Slot height", pitchX: "Pitch X", pitchY: "Pitch Y",
 }
 
+const withSeparators = (n) => n.toLocaleString("en-US")
+
+const capMessage = (n) =>
+  `This pattern would need ${withSeparators(n)} cuts; the limit is ${withSeparators(MAX_CUTS)}. ` +
+  "Use a larger cell, slot or pitch, or a smaller panel."
+
 /**
  * The messages that make `params` unusable for `kind`, in field order — an empty array means go.
  * Relational checks run only between fields that are numbers, so a blank field earns one sentence,
- * not three.
+ * not three. The cut cap is checked last and only on a lattice that is otherwise sound, so a zero
+ * pitch is named as a zero pitch, never as an infinite count.
  */
 export function validateParams(kind, params) {
   if (!known(kind)) return [`Unknown pattern kind ${JSON.stringify(kind)}.`]
   const p = merged(kind, params)
+  const messages = structuralMessages(kind, p)
+  if (messages.length) return messages
+  const n = LATTICES[kind](p).count
+  if (n > MAX_CUTS) messages.push(capMessage(n))
+  return messages
+}
+
+function structuralMessages(kind, p) {
   const messages = []
   const ok = (key) => typeof p[key] === "number" && Number.isFinite(p[key])
   const need = (key) => {
@@ -87,6 +107,11 @@ export function validateParams(kind, params) {
       messages.push(`Slot length (${p.slotLength} mm) must be more than the slot width (${p.slotWidth} mm).`)
     }
     positive("gap")
+    // The stagger covers an even column's gap with an odd column's slot only while the gap is
+    // shorter than the slot; at or past it a strip of material runs the whole width uncut.
+    if (ok("gap") && ok("slotLength") && p.gap >= p.slotLength) {
+      messages.push(`Gap between slots (${p.gap} mm) must be shorter than the slot length (${p.slotLength} mm), or uncut ribs run across the hinge.`)
+    }
     positive("rowPitch")
     if (ok("rowPitch") && ok("slotWidth") && p.rowPitch <= p.slotWidth) {
       messages.push(`Row pitch (${p.rowPitch} mm) must be more than the slot width (${p.slotWidth} mm), or the columns merge.`)
@@ -211,6 +236,80 @@ function centre(cuts, { x0, y0, x1, y1 }) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Lattice arithmetic. EACH GENERATOR'S LOOP BOUNDS COME FROM HERE, so the count a refusal names
+// and the cuts a build produces are one computation and cannot disagree. How many positions fit
+// along a band of length `inner` for a shape of size `size` at `pitch`: 0 when the shape does not
+// fit at all, else floor((inner − size) / pitch) + 1.
+function fitCount(inner, size, pitch) {
+  return inner + EPS < size ? 0 : Math.floor((inner - size) / pitch + EPS) + 1
+}
+
+// Living hinge: `columns` across the band; a column's slots start at y0 + offset + k·period and a
+// slot is kept when what remains after clipping to the band is at least `slotWidth` long, i.e.
+//   slotWidth − slotLength ≤ offset + k·period ≤ H − slotWidth
+// which gives each column parity its own closed range of k.
+function hingeLattice(p) {
+  const { width, height, margin, slotLength: L, slotWidth: w, gap, rowPitch } = p
+  const b = band(width, height, margin)
+  const innerW = b.x1 - b.x0
+  const H = b.y1 - b.y0
+  const columns = fitCount(innerW, w, rowPitch)
+  const period = L + gap
+  const range = (offset) => {
+    if (H + EPS < w) return null
+    const kMin = Math.ceil((w - L - offset) / period - EPS)
+    const kMax = Math.floor((H - w - offset) / period + EPS)
+    return kMax < kMin ? null : { kMin, kMax, count: kMax - kMin + 1 }
+  }
+  const even = range(0)
+  const odd = range(period / 2)
+  const count = Math.ceil(columns / 2) * (even ? even.count : 0) + Math.floor(columns / 2) * (odd ? odd.count : 0)
+  return { b, innerW, columns, period, even, odd, count }
+}
+
+// Honeycomb: rows of cells 2R tall at vPitch; even rows hold cells from the band's left edge,
+// odd rows start half a pitch in, so they hold the same number or one fewer.
+function honeycombLattice(p) {
+  const { width, height, margin, cellAcrossFlats: w, wall } = p
+  const b = band(width, height, margin)
+  const innerW = b.x1 - b.x0
+  const H = b.y1 - b.y0
+  const R = w / Math.sqrt(3)
+  const hPitch = w + wall
+  const vPitch = (Math.sqrt(3) / 2) * (w + wall)
+  const rows = fitCount(H, 2 * R, vPitch)
+  const even = fitCount(innerW, w, hPitch)
+  const odd = fitCount(innerW - hPitch / 2, w, hPitch)
+  const count = Math.ceil(rows / 2) * even + Math.floor(rows / 2) * odd
+  return { b, innerW, R, hPitch, vPitch, rows, even, odd, count }
+}
+
+// Slot grid: a plain cols × rows of positions where a slot fits whole.
+function gridLattice(p) {
+  const { width, height, margin, slotW, slotH, pitchX, pitchY } = p
+  const b = band(width, height, margin)
+  const innerW = b.x1 - b.x0
+  const innerH = b.y1 - b.y0
+  const cols = fitCount(innerW, slotW, pitchX)
+  const rows = fitCount(innerH, slotH, pitchY)
+  return { b, innerW, innerH, cols, rows, count: cols * rows }
+}
+
+const LATTICES = { "living-hinge": hingeLattice, honeycomb: honeycombLattice, "slot-grid": gridLattice }
+
+/**
+ * How many cuts `kind` would make for `params`, without building one — the number the cap names.
+ * Structurally invalid params (a zero pitch) are refused with their own message, never counted.
+ */
+export function cutCount(kind, params) {
+  if (!known(kind)) throw new RangeError(`patterns: unknown kind ${JSON.stringify(kind)}`)
+  const p = merged(kind, params)
+  const messages = structuralMessages(kind, p)
+  if (messages.length) throw new Error(messages[0])
+  return LATTICES[kind](p).count
+}
+
+// ---------------------------------------------------------------------------------------------
 // Generators
 
 /**
@@ -220,27 +319,21 @@ function centre(cuts, { x0, y0, x1, y1 }) {
  * bends about the Y axis. Slots crossing the top or bottom of the band are shortened to it.
  */
 export function livingHinge(params) {
-  const { width, height, margin, slotLength, slotWidth, gap, rowPitch } = resolve("living-hinge", params)
-  const b = band(width, height, margin)
-  const innerW = b.x1 - b.x0
+  const p = resolve("living-hinge", params)
+  const { slotLength, slotWidth, rowPitch } = p
+  const { b, innerW, columns, period, even, odd } = hingeLattice(p)
   const r = slotWidth / 2
-  const columns = innerW + EPS < slotWidth ? 0 : Math.floor((innerW - slotWidth) / rowPitch + EPS) + 1
   const span = slotWidth + (columns - 1) * rowPitch
   const startX = b.x0 + r + (innerW - span) / 2
-  const period = slotLength + gap
   const cuts = []
   for (let i = 0; i < columns; i++) {
     const cx = startX + i * rowPitch
+    const lattice = i % 2 === 1 ? odd : even
+    if (!lattice) continue
     const offset = i % 2 === 1 ? period / 2 : 0
-    // The first index whose slot could reach into the band; anything it clips to nothing is skipped.
-    const kFirst = Math.floor(-(offset + slotLength) / period)
-    for (let k = kFirst; ; k++) {
+    for (let k = lattice.kMin; k <= lattice.kMax; k++) {
       const top = b.y0 + offset + k * period
-      if (top >= b.y1 - EPS) break
-      const a = Math.max(top, b.y0)
-      const z = Math.min(top + slotLength, b.y1)
-      if (z - a < slotWidth - EPS) continue   // above the band, or shortened past a stadium's minimum
-      cuts.push(stadium(cx, a, z, r))
+      cuts.push(stadium(cx, Math.max(top, b.y0), Math.min(top + slotLength, b.y1), r))
     }
   }
   return { cuts: centre(cuts, b) }
@@ -252,20 +345,16 @@ export function livingHinge(params) {
  * cell then inset by half the wall. Only cells that fit whole inside the band are kept.
  */
 export function honeycomb(params) {
-  const { width, height, margin, cellAcrossFlats: w, wall } = resolve("honeycomb", params)
-  const b = band(width, height, margin)
-  const R = w / Math.sqrt(3)
-  const hPitch = w + wall
-  const vPitch = (Math.sqrt(3) / 2) * (w + wall)
+  const p = resolve("honeycomb", params)
+  const w = p.cellAcrossFlats
+  const { b, R, hPitch, vPitch, rows, even, odd } = honeycombLattice(p)
   const cuts = []
-  for (let j = 0; ; j++) {
+  for (let j = 0; j < rows; j++) {
     const cy = b.y0 + R + j * vPitch
-    if (cy + R > b.y1 + EPS) break
     const shift = j % 2 === 1 ? hPitch / 2 : 0
-    for (let i = 0; ; i++) {
-      const cx = b.x0 + w / 2 + shift + i * hPitch
-      if (cx + w / 2 > b.x1 + EPS) break
-      cuts.push(hexagon(cx, cy, w))
+    const n = j % 2 === 1 ? odd : even
+    for (let i = 0; i < n; i++) {
+      cuts.push(hexagon(b.x0 + w / 2 + shift + i * hPitch, cy, w))
     }
   }
   return { cuts: centre(cuts, b) }
@@ -276,12 +365,9 @@ export function honeycomb(params) {
  * `pitchX` × `pitchY`; only positions where a slot fits whole inside the band are used.
  */
 export function slotGrid(params) {
-  const { width, height, margin, slotW, slotH, pitchX, pitchY } = resolve("slot-grid", params)
-  const b = band(width, height, margin)
-  const innerW = b.x1 - b.x0
-  const innerH = b.y1 - b.y0
-  const cols = innerW + EPS < slotW ? 0 : Math.floor((innerW - slotW) / pitchX + EPS) + 1
-  const rows = innerH + EPS < slotH ? 0 : Math.floor((innerH - slotH) / pitchY + EPS) + 1
+  const p = resolve("slot-grid", params)
+  const { slotW, slotH, pitchX, pitchY } = p
+  const { b, innerW, innerH, cols, rows } = gridLattice(p)
   const radius = Math.min(slotW, slotH) / 4
   const cuts = []
   if (cols > 0 && rows > 0) {
