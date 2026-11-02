@@ -161,6 +161,14 @@ function assertClosed(mesh, what) {
 //
 // Without the lip the inner surface is just inset WALL from the top flat down to the floor, so the
 // top flat spans the whole wall (inset 0 → WALL at z_top = 7·z).
+//
+// THE SUPPORT IS CLIPPED AT THE FLOOR PLANE. For z = 1 with the lip the support's lower ring would sit
+// at 7 − 1.4 = 5.6, BELOW the floor at 5.75, and the chain would then climb from (1.2, 5.6) back up to
+// (1.2, 5.75): a strip facing into the wall, an inner surface folded over itself — and `validate`
+// still answers watertight, because a folded surface is still closed. So when the support would end
+// at or below the floor, the slope stops where it crosses the floor plane — at 45°, inset
+// 2.6 − (7·z − floor), 1.35 for z = 1 — and there is no WALL ring at all; the floor cap sits on that
+// ring. Rows for z ≥ 2 are untouched (a test pins the 2×1×3 table).
 export function binProfile({ z, lip = true } = {}) {
   const wallTop = HEIGHT_UNIT * z;
   const floor = BASE_HEIGHT + FLOOR;
@@ -173,23 +181,35 @@ export function binProfile({ z, lip = true } = {}) {
     ];
   }
   const top = wallTop + LIP_HEIGHT;
-  const [c1, v, c2] = [LIP[0].chamfer, LIP[1].vertical, LIP[2].chamfer];
-  return [
+  const [c1, v] = [LIP[0].chamfer, LIP[1].vertical];
+  const rows = [
     { inset: 0, z: BASE_HEIGHT },
     { inset: 0, z: top },
     { inset: TOP_FLAT, z: top },
     { inset: c1, z: top - c1 },
     { inset: c1, z: top - c1 - v },
     { inset: LIP_LEDGE_INSET, z: wallTop },          // = top − LIP_RECESS: c1 + c2 in, c1 + v + c2 down
-    { inset: WALL, z: wallTop - LIP_SUPPORT },
-    { inset: WALL, z: floor },
   ];
+  const supportBottom = wallTop - LIP_SUPPORT;
+  if (supportBottom > floor) {
+    rows.push({ inset: WALL, z: supportBottom }, { inset: WALL, z: floor });
+  } else {
+    rows.push({ inset: LIP_LEDGE_INSET - (wallTop - floor), z: floor }); // the slope meets the floor plane
+  }
+  return rows;
 }
 
 // Where the full-width cavity ends: the wall top at 7·z, or LIP_SUPPORT below it when the lip's
-// support slope takes the top 1.4 mm. Dividers rise to here and binStats measures the cavity to here.
+// support slope takes the top 1.4 mm — never below the floor, where the slope is clipped and there is
+// no full-width cavity at all (z = 1 with the lip: height 0). Dividers rise to here and binStats
+// measures the cavity to here.
 export function cavityTop({ z, lip = true } = {}) {
-  return HEIGHT_UNIT * z - (lip ? LIP_SUPPORT : 0);
+  return Math.max(HEIGHT_UNIT * z - (lip ? LIP_SUPPORT : 0), BASE_HEIGHT + FLOOR);
+}
+
+// The full-width cavity's height: 0 when the lip's support reaches the floor.
+export function cavityHeight({ z, lip = true } = {}) {
+  return cavityTop({ z, lip }) - (BASE_HEIGHT + FLOOR);
 }
 
 // The body alone — one closed shell from the base's top (z = BASE_HEIGHT) to the rim — so a test can
@@ -235,8 +255,11 @@ export function footMesh(cx, cy) {
 // `dividersX` walls stand across the X extent (splitting it into dividersX + 1 compartments) and
 // `dividersY` across the Y extent, each WALL thick, from 0.5 inside the floor up to `cavityTop` —
 // 7·z, or 7·z − 1.4 with the lip, so a divider's end never pokes through the support slope — and
-// 0.5 into each side wall.
+// 0.5 into each side wall. A bin with NO full-width cavity (z = 1 with the lip) gets none: a divider
+// there would be a sliver buried under the floor, so validateParams refuses the request and this
+// answers [] regardless.
 export function dividerMeshes({ x, y, z, lip = true, dividersX = 0, dividersY = 0 } = {}) {
+  if (!(cavityHeight({ z, lip }) > 0)) return [];
   const [W, D] = footprint(x, y);
   const w = W - 2 * WALL, d = D - 2 * WALL;
   const floor = BASE_HEIGHT + FLOOR;
@@ -386,9 +409,13 @@ export function validateParams(kind, p = {}) {
     }
     if (!wholeIn(z, 1, heightUnits)) messages.push(`z must be a whole number from 1 to ${heightUnits} (7 mm units).`);
     const dx = Number(p.dividersX ?? 0), dy = Number(p.dividersY ?? 0);
+    const lip = p.lip !== false;
+    const noCavity = wholeIn(z, 1, heightUnits) && !(cavityHeight({ z, lip }) > 0);
     for (const [key, n, size] of [["x", dx, x], ["y", dy, y]]) {
       if (!wholeIn(n, 0, dividers)) {
         messages.push(`Dividers along ${key} must be a whole number from 0 to ${dividers}.`);
+      } else if (n > 0 && noCavity) {
+        messages.push(`Dividers along ${key} need a cavity: a ${z}-unit bin with the stacking lip has none below the lip. Add height or drop the lip.`);
       } else if (n > 0 && wholeIn(size, 1, units)) {
         const inside = PITCH * size - GAP - 2 * WALL;
         const compartment = (inside - n * WALL) / (n + 1);

@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import { validate, stats, merge, toBinaryStl } from "../../addons/_lib/mesh.js";
 import {
   PITCH, GAP, HEIGHT_UNIT, BASE_HEIGHT, CORNER_R, WALL, FLOOR, LIP_RECESS, LIP_SUPPORT, LIP_HEIGHT, TOP_FLAT,
-  footprint, feetFor, footMesh, binShell, binMesh, binStats, cavityTop, dividerMeshes, baseplateMesh, socketRings,
-  defaults, validateParams,
+  footprint, feetFor, footMesh, binProfile, binShell, binMesh, binStats, cavityTop, cavityHeight, dividerMeshes,
+  baseplateMesh, socketRings, defaults, validateParams,
 } from "../../addons/gridfinity/gridfinity_core.js";
 
 const CLOSED = { watertight: true, openEdges: 0, nonManifoldEdges: 0, flippedEdges: 0 };
@@ -109,6 +109,82 @@ test("the lip profile is where the spec puts it: the ledge at inset 2.6 at the w
   assert.ok(rim.some((v) => Math.abs(v[0] - (halfW - TOP_FLAT)) <= 1e-9), "inner rim at TOP_FLAT");
   const vertical = verticesAtZ(shell, top - 0.7);
   assertNear(Math.max(...vertical.map((v) => v[0])), halfW - 0.7, 1e-9, "lip chamfer ends at inset 0.7");
+});
+
+// The floor is at 5.75 and the body's outer bottom ring at 4.75, so the ONLY vertices a shell may hold
+// below the floor plane are that outer ring's: an inner-surface vertex below the floor is the fold.
+function assertNoInnerVertexBelowFloor(shell, label) {
+  const floor = BASE_HEIGHT + FLOOR;
+  const below = shell.vertices.filter((v) => v[2] < floor - 1e-9);
+  assert.ok(below.length >= 36, `${label}: the outer bottom ring is below the floor`);
+  for (const v of below) assertNear(v[2], BASE_HEIGHT, 1e-9, `${label}: a vertex below the floor at z ${v[2]} is not the outer bottom ring`);
+}
+
+test("the 2x1x3 profile with the lip is the canonical eight-row table, unchanged by the z = 1 clip", () => {
+  const expected = [
+    [0, 4.75], [0, 25.4], [0.25, 25.4], [0.7, 24.7], [0.7, 22.9], [2.6, 21], [1.2, 19.6], [1.2, 5.75],
+  ];
+  const rows = binProfile({ z: 3, lip: true });
+  assert.equal(rows.length, expected.length);
+  rows.forEach((row, i) => {
+    assertNear(row.inset, expected[i][0], 1e-12, `row ${i} inset`);
+    assertNear(row.z, expected[i][1], 1e-12, `row ${i} z`);
+  });
+  assert.deepEqual(binProfile({ z: 3, lip: false }).map((r) => [r.inset, r.z]), [[0, 4.75], [0, 21], [1.2, 21], [1.2, 5.75]]);
+  // z = 2 is the smallest lipped bin whose support ends above the floor: 14 − 1.4 = 12.6 > 5.75
+  assert.deepEqual(binProfile({ z: 2, lip: true }).slice(-2).map((r) => [r.inset, r.z]), [[1.2, 12.6], [1.2, 5.75]]);
+});
+
+test("z = 1 with the lip: the support slope is clipped at the floor plane, so nothing folds below it", () => {
+  const rows = binProfile({ z: 1, lip: true });
+  assert.equal(rows.length, 7, "seven rows: no WALL ring at all");
+  const last = rows[rows.length - 1];
+  assertNear(last.inset, 2.6 - (7 - 5.75), 1e-12, "the slope meets the floor at inset 1.35");
+  assertNear(last.z, BASE_HEIGHT + FLOOR, 1e-12, "the last ring IS the floor");
+  assertNear(rows[rows.length - 2].z, 7, 1e-12, "the ledge at 7z sits just above it");
+  for (const [x, y] of [[1, 1], [2, 1], [1, 2], [3, 2]]) {
+    const shell = binShell({ x, y, z: 1, lip: true });
+    assert.deepEqual(validate(shell), CLOSED, `${x}x${y}x1 shell`);
+    assert.ok(signedVolume(shell) > 0, `${x}x${y}x1 wound outward`);
+    assertNoInnerVertexBelowFloor(shell, `${x}x${y}x1`);
+    const mesh = binMesh({ x, y, z: 1, lip: true });
+    assert.deepEqual(validate(mesh), CLOSED, `${x}x${y}x1 bin`);
+    assertSize(mesh, [42 * x - 0.5, 42 * y - 0.5, 7 + 4.4], `${x}x${y}x1 bounds`);
+  }
+  // the cavity is reported as nothing, never as a negative number
+  const s = binStats({ x: 1, y: 1, z: 1, lip: true });
+  assert.equal(s.cavity[2], 0, "cavity height 0");
+  assert.ok(!(s.cavity[2] < 0) && !Object.is(s.cavity[2], -0), "not negative, not -0");
+  assertNear(s.height, 11.4, 1e-9, "a 1-unit lipped bin is 7 + 4.4 tall");
+  assert.equal(cavityTop({ z: 1, lip: true }), BASE_HEIGHT + FLOOR, "cavityTop clamps to the floor");
+  assert.equal(cavityHeight({ z: 1, lip: true }), 0);
+  assertNear(cavityHeight({ z: 1, lip: false }), 7 - 5.75, 1e-12, "without the lip a 1-unit bin has 1.25 of cavity");
+  // dividers: refused by validation and a no-op for the builder
+  assert.deepEqual(dividerMeshes({ x: 1, y: 1, z: 1, lip: true, dividersX: 1, dividersY: 1 }), []);
+  assert.equal(binMesh({ x: 1, y: 1, z: 1, lip: true, dividersX: 1 }).faces.length, binMesh({ x: 1, y: 1, z: 1, lip: true }).faces.length);
+  const refused = validateParams("bin", { x: 1, y: 1, z: 1, lip: true, dividersX: 1 });
+  assert.equal(refused.length, 1);
+  assert.match(refused[0], /divider/i);
+  assert.match(refused[0], /lip/i);
+  assert.deepEqual(validateParams("bin", { x: 1, y: 1, z: 1, lip: true }), [], "no dividers: a 1-unit lipped bin is fine");
+  assert.deepEqual(validateParams("bin", { x: 1, y: 1, z: 1, lip: false, dividersX: 1 }), [], "without the lip the 1.25 cavity takes a divider");
+  assert.equal(dividerMeshes({ x: 1, y: 1, z: 1, lip: false, dividersX: 1 }).length, 1);
+});
+
+test("a sweep of small bins — z 1 and 2, lip on and off — is closed, outward, and never folded", () => {
+  for (const z of [1, 2]) {
+    for (const lip of [true, false]) {
+      for (const [x, y] of [[1, 1], [2, 1], [1, 3], [2, 2]]) {
+        const shell = binShell({ x, y, z, lip });
+        const label = `${x}x${y}x${z} lip=${lip}`;
+        assert.deepEqual(validate(shell), CLOSED, label);
+        assert.ok(signedVolume(shell) > 0, `${label} wound outward`);
+        assertNoInnerVertexBelowFloor(shell, label);
+        const dividers = z === 1 && lip ? 0 : 1;
+        assert.deepEqual(validate(binMesh({ x, y, z, lip, dividersX: dividers, dividersY: dividers })), CLOSED, `${label} bin`);
+      }
+    }
+  }
 });
 
 test("a bin with dividers is a union of closed shells, each wound outward", () => {

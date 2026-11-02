@@ -86,8 +86,11 @@ export default {
         const s = binStats(p, mesh)
         info.set(`Footprint ${fmt(s.footprint[0])} × ${fmt(s.footprint[1])} mm, height ${fmt(s.height)} mm, ` +
           `cavity ${fmt(s.cavity[0])} × ${fmt(s.cavity[1])} × ${fmt(s.cavity[2])} mm — ${fit}`)
-        detail.textContent = `${fmt(s.volumeMm3 / 1000, 1)} cm³ · ${withSeparators(s.triangles)} triangles · STL ${fmt(stlBytes(mesh) / 1024, 1)} KB` +
-          (p.lip ? ` · cavity depth is measured to ${fmt(HEIGHT_UNIT * p.z - LIP_SUPPORT)} mm (7z − 1.4), where the lip's support slope starts; the lip above takes the next bin's feet` : "")
+        const lipNote = !p.lip ? ""
+          : s.cavity[2] > 0
+            ? ` · cavity depth is measured to ${fmt(HEIGHT_UNIT * p.z - LIP_SUPPORT)} mm (7z − 1.4), where the lip's support slope starts; the lip above takes the next bin's feet`
+            : " · a 1-unit bin with the stacking lip has no full-width cavity: the lip's support slope reaches the floor"
+        detail.textContent = `${fmt(s.volumeMm3 / 1000, 1)} cm³ · ${withSeparators(s.triangles)} triangles · STL ${fmt(stlBytes(mesh) / 1024, 1)} KB${lipNote}`
       }
     }
     const scheduleRender = debounce(render, 120)
