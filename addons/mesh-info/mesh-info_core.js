@@ -320,9 +320,12 @@ function mdTable(headers, rows) {
 export function costMarkdown({ fileName, report, estimate, inputs = {} } = {}) {
   const mat = materialFor(inputs.material ?? "pla");
   const size = report.bounds.size.map((n) => fmt(n, 2)).join(" × ");
-  const watertight = report.watertight
-    ? "yes"
-    : `no — ${report.openEdges} open edge${report.openEdges === 1 ? "" : "s"}; a slicer may still repair it`;
+  // The same three-way answer the page gives: a closed shell with a duplicated face has no open
+  // edge, so counting open edges alone called it "no — 0 open edges" (found by the capped review).
+  const defect = report.openEdges > 0
+    ? `${report.openEdges} open edge${report.openEdges === 1 ? "" : "s"}`
+    : `${report.nonManifoldEdges ?? 0} non-manifold edge${report.nonManifoldEdges === 1 ? "" : "s"}`;
+  const watertight = report.watertight ? "yes" : `no — ${defect}; a slicer may still repair it`;
   const stat = mdTable(["Stat", "Value"], [
     ["Triangles", report.triangles.toLocaleString("en-US")],
     ["Vertices", report.vertices.toLocaleString("en-US")],
