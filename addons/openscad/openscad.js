@@ -1,7 +1,7 @@
 import { mountGallery } from "./gallery.js"
 import { mountEditor } from "./editor.js"
 import { mountShow } from "./show.js"
-import { fetchGenerators, fetchSource, deriveParams } from "./sidecar.js"
+import { fetchGenerators, fetchSource, deriveParams, serviceFailure } from "./sidecar.js"
 import { escapeHtml } from "./util.js"
 // THE HOST SDK, NOT A HAND-ROLLED fetch. "@maker/addon-sdk" is pinned by the host into every addon
 // page's merged importmap — never vendor a copy, never pin it in manifests.json, never import it by
@@ -18,7 +18,7 @@ import { escapeHtml } from "./util.js"
 // addon as usual, loads this module, and then fails to resolve "@maker/addon-sdk" — the page reads
 // "This tool failed to load" and no code here ever runs. The recovery is on the publishing side:
 // `bin/rollback <earlier-sha>` in this repo.
-import { host, AddonError } from "@maker/addon-sdk"
+import { host, ServiceError } from "@maker/addon-sdk"
 
 // The OpenSCAD addon: a catalog of bundled parametric generators plus any .scad in the user's own
 // library, rendered to 3MF by the openscad sidecar and saved into the library.
@@ -117,7 +117,13 @@ export default {
         // or renamed since it was saved from (files.read answers 404 for all four of "not yours",
         // "never existed", "deleted" and "is a folder"), an unreachable library (503), a sidecar
         // that cannot derive a schema.
-        showGallery(`Couldn't open that source: ${e.message}`)
+        //
+        // ONLY A SIDECAR'S FAILURE IS RE-WORDED. The host's own refusals here already arrive as a
+        // sentence ("No such file in your library.", "Couldn't reach your library. Try again."),
+        // while a ServiceError's `message` is the sidecar's raw text — a JSON blob for a /params
+        // refusal, "Service request failed (404)" for a stopped sidecar. serviceFailure words that.
+        const why = e instanceof ServiceError ? serviceFailure(e) : e.message
+        showGallery(`Couldn't open that source: ${why}`)
         return
       }
       if (mine !== sequence) return
@@ -212,13 +218,16 @@ export default {
       // accepted, because a states or capabilities failure means the HOST is unwell, which no
       // wording of this line helps with, while the missing-sidecar case is the one an operator can
       // actually fix and the one that will actually happen.
-      page.innerHTML = `<p class="muted">OpenSCAD is unavailable: ${escapeHtml(e.message)}</p>`
-      // Anything that is not an AddonError is a bug in THIS bundle rather than a refusal from the
-      // host or the sidecar, and it must still reach the console. NOT rethrown: mount() is awaited
-      // inside addon_controller.js's own try, and a rejection there OVERWRITES the mount target with
-      // "This tool failed to load" — discarding the tailored message rendered one line above and
-      // reporting a reachable sidecar outage as a broken bundle.
-      if (!(e instanceof AddonError)) console.error(e)
+      //
+      // A SENTENCE, NOT THE ERROR'S OWN TEXT: that missing sidecar is a body-less 404 whose
+      // `message` is "Service request failed (404)", a wire code no maker can act on.
+      // serviceFailure (sidecar.js) words it, and puts the raw error on the console whenever the
+      // page does not show it — a bug in THIS bundle included, which is what the
+      // `instanceof AddonError` check that used to sit here existed to surface.
+      page.innerHTML = `<p class="muted">${escapeHtml(serviceFailure(e))}</p>`
+      // NOT rethrown: mount() is awaited inside addon_controller.js's own try, and a rejection there
+      // OVERWRITES the mount target with "This tool failed to load" — discarding the tailored message
+      // rendered one line above and reporting a reachable sidecar outage as a broken bundle.
       return
     }
 

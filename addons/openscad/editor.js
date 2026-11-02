@@ -2,7 +2,7 @@ import { mountSections } from "./sections.js"
 import { mountFolderField } from "./folder_field.js"
 import { mountViewer } from "./viewer.js"
 import { buildParamGroups, paramValues } from "./fields.js"
-import { render3mf } from "./sidecar.js"
+import { render3mf, serviceFailure } from "./sidecar.js"
 import { escapeHtml } from "./util.js"
 // See openscad.js's import for why this is a static import of the host pin and never a vendored
 // copy. `host` is a LIVE BINDING — read through it at call time, never captured at module top level.
@@ -211,7 +211,10 @@ export function mountEditor(root, { source, states, ctx, prefillValues, onBack, 
       // wrapped in ServiceUnavailableError, which would be a lie about a request this code
       // cancelled and would paint an error banner over a superseded render.
       if (e.name === "AbortError" || mine !== previewSeq) return
-      setStatus(`Couldn't reach the generator: ${e.message}`, true)
+      // render3mf returns {ok: false} for a sidecar's own refusal, so this is a transport failure,
+      // whose `message` is the browser's own ("Network request failed: Failed to fetch").
+      // serviceFailure words it and sends that text to the console.
+      setStatus(serviceFailure(e), true)
       return
     }
     if (mine !== previewSeq) return
@@ -252,7 +255,7 @@ export function mountEditor(root, { source, states, ctx, prefillValues, onBack, 
     try {
       result = await render3mf({ scad: source.scad, params })
     } catch (e) {
-      setSaveStatus(`Couldn't reach the generator — nothing was saved. ${e.message}`, true)
+      setSaveStatus(`Nothing was saved. ${serviceFailure(e)}`, true)
       return
     }
     if (!result.ok) { setSaveStatus(result.message, true); return }
