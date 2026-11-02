@@ -212,6 +212,25 @@ test("validateParams answers nothing for the defaults and a message per broken f
   assert.ok(validateParams("insert", { ...defaults("insert"), sizes: ["M8"], pitch: 10 }).some((m) => /pitch/.test(m)))
 })
 
+test("validateParams(finger) bounds the length by the nominal slot too, not only the finger, when every offset is negative", () => {
+  // widest finger = 9.5 but the bottom slots are the nominal 10 at length/4 and 3·length/4: on a
+  // 19 mm piece they would span [-0.25, 9.75] and [9.25, 19.25] — overlapping and past both ends.
+  const refused = validateParams("finger", { tab: 10, thickness: 3, offsets: [-0.5], length: 19 })
+  assert.ok(refused.some((m) => /length must be at least 20 mm/.test(m)), refused.join(" | "))
+  assert.deepEqual(validateParams("finger", { tab: 10, thickness: 3, offsets: [-0.5], length: 20 }), [])
+  const spec = fingerFit({ tab: 10, thickness: 3, offsets: [-0.5], length: 20 })
+  const [a, b] = spec.pieces[0].slots
+  assert.ok(a.x >= 0 && a.x + a.width <= b.x && b.x + b.width <= 20, "the slots fit the piece end to end")
+})
+
+test("validateParams(kerf) counts the slots arithmetically: a huge range is refused without building it", () => {
+  const t0 = performance.now()
+  const messages = validateParams("kerf", { from: 0.01, to: 1e5, step: 0.01, slotLength: 15, pitch: 6, height: 25 })
+  const elapsed = performance.now() - t0
+  assert.ok(messages.some((m) => /more than 100 slots/.test(m)), messages.join(" | "))
+  assert.ok(elapsed < 50, `validateParams took ${elapsed.toFixed(1)} ms`)
+})
+
 test("parseNumberList and parseSizeList read the list fields", () => {
   assert.deepEqual(parseNumberList("-0.2, -0.1 0 ;0.1,0.2"), [-0.2, -0.1, 0, 0.1, 0.2])
   assert.deepEqual(parseNumberList("0.1, abc, 0.2"), [0.1, NaN, 0.2])

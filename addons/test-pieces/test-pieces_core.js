@@ -79,11 +79,18 @@ export function defaults(kind) {
 // ---- kerf comb -----------------------------------------------------------------------------------
 
 // Integer hundredths from `from` to `to`: 0.1 + 0.05 + 0.05 … drifts past 0.6 in floats and drops
-// the last slot; 10 + 5 + 5 … does not.
-function kerfWidths(from, to, step) {
+// the last slot; 10 + 5 + 5 … does not. The COUNT is arithmetic, so validation can refuse a huge
+// range (a stray "to" of 1e5 at step 0.01 is ten million slots) without ever building the list.
+function kerfCount(from, to, step) {
   const f = hundredths(from), t = hundredths(to), s = hundredths(step)
-  const widths = []
-  if (s > 0 && f <= t) for (let w = f; w <= t; w += s) widths.push(w / 100)
+  return s > 0 && f <= t ? Math.floor((t - f) / s) + 1 : 0
+}
+
+function kerfWidths(from, to, step) {
+  const f = hundredths(from), s = hundredths(step)
+  const count = kerfCount(from, to, step)
+  const widths = new Array(count)
+  for (let i = 0; i < count; i++) widths[i] = (f + i * s) / 100
   return widths
 }
 
@@ -312,7 +319,7 @@ export function validateParams(kind, p = {}) {
     if (positive(p.from) && positive(p.to)) need(hundredths(p.from) <= hundredths(p.to), "from must not exceed to")
     need(positive(p.step), "step must be positive")
     if (positive(p.from) && positive(p.to) && positive(p.step)) {
-      need(kerfWidths(p.from, p.to, p.step).length <= 100, "step is too small: that is more than 100 slots")
+      need(kerfCount(p.from, p.to, p.step) <= 100, "step is too small: that is more than 100 slots")
     }
     need(positive(p.slotLength), "slot length must be positive")
     if (positive(p.to)) need(positive(p.pitch) && p.pitch >= p.to + 2, `pitch must be at least ${fmtN(p.to + 2)} mm (the widest slot plus 2)`)
@@ -327,10 +334,12 @@ export function validateParams(kind, p = {}) {
     need(offsets.length > 0, "offsets needs at least one value")
     need(offsets.every(finite), "offsets must all be numbers")
     if (positive(p.tab) && offsets.length && offsets.every(finite)) {
-      const widest = p.tab + Math.max(...offsets)
+      // The bottom slots stay the NOMINAL tab whatever the offset, so with every offset negative
+      // the slot, not the finger, is the widest cut at length/4 and 3·length/4.
+      const widest = Math.max(p.tab + Math.max(...offsets), p.tab)
       const narrowest = p.tab + Math.min(...offsets)
       need(narrowest > 0, "an offset must not cancel the whole tab")
-      need(positive(p.length) && p.length >= 2 * widest, `length must be at least ${fmtN(2 * widest)} mm (twice the widest finger)`)
+      need(positive(p.length) && p.length >= 2 * widest, `length must be at least ${fmtN(2 * widest)} mm (twice the widest finger or slot)`)
     } else {
       need(positive(p.length), "length must be positive")
     }
