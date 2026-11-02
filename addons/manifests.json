@@ -182,7 +182,10 @@
     "entry": "text-outline.js",
     "min_host": 3,
     "category": "generate",
-    "opens": [".ttf", ".otf"],
+    "opens": [
+      ".ttf",
+      ".otf"
+    ],
     "version": "1.0.0",
     "author": "Charles Schwartz",
     "license": "MIT",
@@ -225,7 +228,14 @@
     "entry": "lithophane.js",
     "min_host": 3,
     "category": "generate",
-    "opens": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"],
+    "opens": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".webp",
+      ".bmp"
+    ],
     "version": "1.0.0",
     "author": "Charles Schwartz",
     "license": "MIT",
@@ -287,7 +297,13 @@
     "entry": "gcode.js",
     "min_host": 2,
     "category": "inspect",
-    "opens": [".gcode", ".gco", ".nc", ".tap", ".ngc"],
+    "opens": [
+      ".gcode",
+      ".gco",
+      ".nc",
+      ".tap",
+      ".ngc"
+    ],
     "version": "1.0.0",
     "author": "Charles Schwartz",
     "license": "MIT",
@@ -311,7 +327,11 @@
     "entry": "mesh-info.js",
     "min_host": 2,
     "category": "inspect",
-    "opens": [".stl", ".3mf", ".obj"],
+    "opens": [
+      ".stl",
+      ".3mf",
+      ".obj"
+    ],
     "version": "1.0.0",
     "author": "Charles Schwartz",
     "license": "MIT",
