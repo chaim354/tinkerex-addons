@@ -370,15 +370,21 @@ class VertexWelder {
   }
 }
 
-// Binary when the byte length is exactly 84 + 50·n for the count at offset 80; otherwise ASCII,
+// Binary when the file holds AT LEAST 84 + 50·n bytes for the count at offset 80; otherwise ASCII,
 // `vertex x y z` lines taken in threes.
+//
+// A FLOOR, NOT AN EQUALITY. Some exporters end a binary file with a newline, and an exact-length
+// test then fell through to the ASCII parser, which answered zero faces with no error anywhere —
+// the one silent outcome a file reader must not have. The floor cannot admit an ASCII file by
+// accident: its bytes 80..83 are printable text, so the count they spell is in the billions and
+// the implied length in the gigabytes, which no real ASCII STL reaches.
 export function parseStl(input) {
   if (typeof input === "string") return parseAsciiStl(input);
   const bytes = toBytes(input);
   if (bytes.byteLength >= 84) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const count = view.getUint32(80, true);
-    if (bytes.byteLength === 84 + 50 * count) return parseBinaryStl(view, count);
+    if (bytes.byteLength >= 84 + 50 * count) return parseBinaryStl(view, count);
   }
   return parseAsciiStl(new TextDecoder("utf-8").decode(bytes));
 }
