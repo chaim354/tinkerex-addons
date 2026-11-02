@@ -250,3 +250,54 @@ test("validateParams: sizes must be positive, and a url too long for a QR is rep
   assert.ok(validateParams({ ...d, sheet: "b5" }).some((m) => /unknown sheet/i.test(m)))
   assert.deepEqual(validateParams({ ...d, sheet: "single", labelW: 300 }), [])
 })
+
+test("labelSvg: a line too long for its text area is squeezed with textLength; a short one is not", () => {
+  // 50 × 25, font 4, QR on: the QR takes 21 mm at the right, so the text area runs from x+2 to
+  // (QR left − 2) = 23 mm. "Heat-set inserts" is 16 chars ≈ 0.6·4·16 = 38.4 mm: too long. "Bolts" is
+  // 5 chars ≈ 12 mm: fits.
+  const url = "https://example.com/bins/inserts"
+  const long = [label("Heat-set inserts", "M3, 200 pcs in the drawer", url)]
+  const short = [label("Bolts", "M4", url)]
+  const params = { labelW: 50, labelH: 25, fontSize: 4, border: "none", qr: true, padding: 2 }
+  const pageFor = (labels) => layoutSheet({ ...A4_7, labels })[0]
+  const texts = (svg) => [...svg.matchAll(/<text [^>]*>([^<]*)<\/text>/g)].map((m) => ({ tag: m[0], str: m[1] }))
+
+  const squeezed = texts(labelSvg(pageFor(long), { ...params, labels: long }))
+  assert.equal(squeezed.length, 2)
+  assert.ok(squeezed[0].tag.includes('textLength="23"'), squeezed[0].tag)
+  assert.ok(squeezed[0].tag.includes('lengthAdjust="spacingAndGlyphs"'), squeezed[0].tag)
+  // line2 at 3 mm: 25 chars ≈ 45 mm, also squeezed to the same 23 mm.
+  assert.ok(squeezed[1].tag.includes('textLength="23"'), squeezed[1].tag)
+
+  const natural = texts(labelSvg(pageFor(short), { ...params, labels: short }))
+  assert.equal(natural.length, 2)
+  for (const t of natural) {
+    assert.ok(!t.tag.includes("textLength"), t.tag)
+    assert.ok(!t.tag.includes("lengthAdjust"), t.tag)
+  }
+  // Without the QR the same long line has 46 mm and fits, so it is left at its natural width.
+  const roomy = texts(labelSvg(pageFor(long), { ...params, labels: long, qr: false }))
+  assert.ok(!roomy[0].tag.includes("textLength"), roomy[0].tag)
+  // And a centred or right-aligned squeezed line keeps its anchor.
+  const right = texts(labelSvg(pageFor(long), { ...params, labels: long, textAlign: "right" }))
+  assert.ok(right[0].tag.includes('text-anchor="end"') && right[0].tag.includes('textLength="23"'), right[0].tag)
+})
+
+test("a label too short to hold a QR: validateParams says so, and labelSvg draws no QR as a second guard", () => {
+  const d = defaults()
+  const withUrl = `Bolts | M4 | https://example.com/bolts`
+  const messages = validateParams({ ...d, text: withUrl, labelH: 3, padding: 2, qr: true })
+  assert.ok(messages.some((m) => m === "Labels must be taller than 4 mm to hold a QR code; turn the QR off or make them taller."), JSON.stringify(messages))
+  assert.ok(validateParams({ ...d, text: withUrl, labelH: 4, padding: 2, qr: true }).some((m) => /taller than 4 mm/.test(m)), "exactly 2·padding is still too short")
+  assert.deepEqual(validateParams({ ...d, text: withUrl, labelH: 4.5, padding: 2, qr: true }), [])
+  // With the QR off, or with no url to encode, a short label is only short — nothing to complain about.
+  assert.deepEqual(validateParams({ ...d, text: withUrl, labelH: 3, padding: 2, qr: false }), [])
+  assert.deepEqual(validateParams({ ...d, text: "Bolts | M4", labelH: 3, padding: 2, qr: true }), [])
+
+  const labels = parseLabels(withUrl)
+  const [page] = layoutSheet({ ...A4_7, labels, labelH: 3 })
+  const svg = labelSvg(page, { labels, labelW: 50, labelH: 3, fontSize: 1, border: "none", qr: true, padding: 2 })
+  assert.equal(count(svg, /<rect /g), 0, "no QR rects at all")
+  assert.ok(!/width="-/.test(svg), "and nothing negative")
+  assert.ok(svg.includes(">Bolts</text>"), "the text is still drawn")
+})

@@ -18,9 +18,10 @@ qrcode_SJIS.js, qrcode_UTF8.js, qrcode.d.ts, README.md, sample.html, sample.js a
 README.md has no licence section. What the package itself states is `"license": "MIT"` in its
 package.json and the banner at the head of the tarball's own, unminified `qrcode.js` — reproduced
 first. The MIT licence text that follows it is the LICENSE file of
-github.com/kazuhikoarase/qrcode-generator (the repository the package.json names) on its default
-branch, read on 2026-11-02; the registry records no gitHead for 1.4.4 and the repository has no
-`1.4.4` tag, so the commit cannot be pinned, but the copyright holder and year are the banner's.
+github.com/kazuhikoarase/qrcode-generator (the repository the package.json names) at tag `js1.4.4`
+— upstream tags its releases `js<version>` — which is commit 9bd2163ddc1628d1ec8ff22ea288a747275ef442
+(2019-09-18). At that commit the LICENSE is byte-equal to the default branch's as read on 2026-11-02,
+and the banner at the head of `js/qrcode.js` is byte-equal to the tarball's, reproduced below.
 
 --- qrcode-generator 1.4.4 (MIT) ---
 

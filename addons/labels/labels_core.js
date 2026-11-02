@@ -131,10 +131,13 @@ export function labelSvg(page, { labels = [], labelW, labelH, fontSize, border =
 
     const textLeft = slot.x + padding
     let textRight = slot.x + labelW - padding
-    if (qr && label.url) {
+    // A QR needs a positive side — below it every module is a negative-width rect. validateParams
+    // reports that case first; this is the second guard, so a caller that skipped validation gets a
+    // label without a QR rather than a broken file.
+    const side = labelH - 2 * padding
+    if (qr && label.url && side > 0) {
       const modules = qrModules(label.url, { level: qrLevel })
       const n = modules.length
-      const side = labelH - 2 * padding
       const cell = side / n
       const qx = slot.x + labelW - padding - side
       const qy = slot.y + padding
@@ -148,10 +151,27 @@ export function labelSvg(page, { labels = [], labelW, labelH, fontSize, border =
 
     const tx = textAlign === "center" ? (textLeft + textRight) / 2 : textAlign === "right" ? textRight : textLeft
     const y1 = slot.y + padding + fontSize
-    if (label.line1) g.text(tx, y1, label.line1, { "font-size": fontSize, "text-anchor": anchor })
-    if (label.line2) g.text(tx, y1 + lineHeight2 * 1.25, label.line2, { "font-size": lineHeight2, "text-anchor": anchor })
+    const available = textRight - textLeft
+    if (label.line1) g.text(tx, y1, label.line1, textAttrs(label.line1, fontSize, anchor, available))
+    if (label.line2) g.text(tx, y1 + lineHeight2 * 1.25, label.line2, textAttrs(label.line2, lineHeight2, anchor, available))
   }
   return doc.toString()
+}
+
+// A sans-serif glyph averages about 0.6 em, so a line of `chars` characters at `size` mm needs about
+// 0.6·size·chars mm. One that would run past the text area — into the QR, or off the label — is
+// squeezed to fit with SVG's own textLength/lengthAdjust rather than left to overlap; a line that
+// fits is left alone, so ordinary labels render at their natural width.
+const GLYPH_EM = 0.6
+
+function textAttrs(str, size, anchor, available) {
+  const attrs = { "font-size": size, "text-anchor": anchor }
+  const needed = GLYPH_EM * size * Array.from(str).length
+  if (available > 0 && needed > available) {
+    attrs.textLength = available
+    attrs.lengthAdjust = "spacingAndGlyphs"
+  }
+  return attrs
 }
 
 /** A fresh, complete parameter set — the mount's fields and a saved item's `data` have this shape. */
@@ -215,6 +235,11 @@ export function validateParams(p = {}) {
   }
 
   if (q.qr) {
+    // A QR's side is labelH − 2·padding; at or below zero every module would be a negative rect.
+    // Reported only when a QR would actually be drawn — a label set with no url draws none.
+    if (positive(q.labelH) && nonNegative(q.padding) && q.labelH - 2 * q.padding <= 0 && labels.some((l) => l.url)) {
+      messages.push(`Labels must be taller than ${mm(2 * q.padding)} mm to hold a QR code; turn the QR off or make them taller.`)
+    }
     labels.forEach((label, i) => {
       if (!label.url) return
       try {

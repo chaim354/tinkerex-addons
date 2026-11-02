@@ -108,7 +108,8 @@ export default {
     const summary = h("p", { class: "muted", style: "margin:0 0 8px" })
     const pageLabel = h("span", { class: "muted" })
     const prev = button("‹ Previous", { ghost: true, onClick: () => { pageIndex = Math.max(0, pageIndex - 1); render() } })
-    const next = button("Next ›", { ghost: true, onClick: () => { pageIndex = Math.min(pages.length - 1, pageIndex + 1); render() } })
+    // Clamped at 0 as well: with no pages, min(-1, …) would send the index negative.
+    const next = button("Next ›", { ghost: true, onClick: () => { pageIndex = Math.max(0, Math.min(pages.length - 1, pageIndex + 1)); render() } })
     const pager = h("div", { style: "display:none;align-items:center;gap:8px;margin:0 0 8px" }, prev, pageLabel, next)
     const stage = h("div", { style: "min-height:120px" })
     const note = status()
