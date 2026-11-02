@@ -409,7 +409,13 @@ export function parseGcode(text, { maxSegments = 2_000_000 } = {}) {
     }
     const feed = st.feed ?? DEFAULT_FEED;
     const moved = Math.abs(tx - st.x) > EPS || Math.abs(ty - st.y) > EPS || Math.abs(tz - st.z) > EPS;
-    if (!moved) {
+    // A FULL CIRCLE ENDS WHERE IT STARTS: `G2 X0 Y0 I-10 J0` from (0,0) is a 360° arc, not a
+    // standstill. The retract/prime shortcut below must not swallow it, or the circle draws
+    // nothing and its length is charged as a retract (found by the capped review). An arc is only
+    // a circle when it names its centre; an R-only start==end arc has no geometry and stays a
+    // no-op, as `arc` already treats it.
+    const circle = (g === 2 || g === 3) && (w.I !== undefined || w.J !== undefined);
+    if (!moved && !circle) {
       if (eDelta !== 0) moveSeconds += (Math.abs(eDelta) * 60) / feed; // a retract or a prime
       return;
     }
