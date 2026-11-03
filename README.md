@@ -41,6 +41,7 @@ bin/build-push            # buildx build --platform linux/amd64, push to ghcr, t
 templates/addon.js        # the bundle bin/new-addon starts from — outside addons/, so never shipped
 test/no_gpl_in_bundle_image_test.sh   # CLAUDE.md §9 guard — see below
 test/new_addon_test.sh    # bin/new-addon's contract, run in a throwaway copy
+test/no_emoji_test.sh     # no emoji in addons/ or templates/ — the host draws none (manifest `icon` values exempt)
 ```
 
 ## Adding or changing an addon
@@ -77,7 +78,7 @@ Required fields (all must be present, or the entry is skipped):
 |---|---|---|
 | `key` | string | Unique addon id. Used in the URL (`/tools/:key`) and as the subdirectory under `addons/` this manifest's assets live in. |
 | `title` | string | Display name in the `/tools` gallery. |
-| `icon` | string | An emoji or short glyph shown next to the title. |
+| `icon` | string | An emoji or short glyph, by convention. Current hosts no longer draw it — the Tools gallery shows a monogram of the title, since the host draws no emoji — but the key is still required. It is the one place an emoji may appear in what the image ships (`test/no_emoji_test.sh`). |
 | `description` | string | One-line description shown under the title. |
 | `api_version` | string | Must equal `"1"` (the only version the host currently speaks) or the entry is dropped. |
 | `entry` | string | The bundle's entry-point filename, relative to `addons/<key>/` — e.g. `"generators.js"`. Loaded as `import(...)` from the browser. |

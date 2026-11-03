@@ -64,7 +64,7 @@ export async function render3mf({ scad, params, signal }) {
   try {
     res = await host.service.post(SERVICE, "render", { scad, params }, { signal })
   } catch (e) {
-    if (e instanceof ServiceError) return { ok: false, message: sidecarMessage(e) }
+    if (e instanceof ServiceError) return { ok: false, message: serviceFailure(e) }
     throw e
   }
   // arrayBuffer, not blob: ThreeMFLoader.parse takes an ArrayBuffer, and the SDK's save accepts one
@@ -73,20 +73,55 @@ export async function render3mf({ scad, params, signal }) {
   return { ok: true, bytes: await res.arrayBuffer() }
 }
 
-// THE SIDECAR'S OWN PROSE, WHICH IS THE WHOLE REASON THIS FUNCTION EXISTS. "b: expected a number,
-// got 'wide'" names the parameter to fix; a status code does not. app.py answers JSON
-// ({"error": "…", "code": "…"}), but ServiceError deliberately carries the response's RAW TEXT
-// rather than a parsed body — a failure through this proxy may not be JSON at all (the proxy's own
-// body-less 404 for an unconfigured sidecar; Werkzeug's HTML 405 page for a GET at a POST-only
-// route) and a parse inside the SDK would have discarded exactly the message worth keeping. So the
-// parse belongs here, in the one place the sidecar's shape is known. Three rungs, so a failure
-// never renders blank: the JSON `error` key; else the raw text, which ServiceError has already put
-// in `message` (substituting its own "Service request failed (404)" for an empty body); else, for a
-// whitespace-only body that leaves both blank, a sentence of our own.
-export function sidecarMessage(error) {
+// WHAT A FAILED SIDECAR CALL SAYS TO A MAKER: A SENTENCE, NEVER THE WIRE. The same function, in the
+// same shape and wording, as addons/boxes/preview.js's — two bundles disagreeing about what a bare
+// 404 means would be worse than either wording. The SDK's ServiceError carries the response's status
+// and its RAW TEXT, and its `message` falls back to "Service request failed (404)" for an empty
+// body: accurate for a developer, and exactly the raw wire code the host stopped showing anyone (its
+// UX audit, 2026-11-01). Every catch in this bundle that would show a failed sidecar call's text
+// goes through here — the editor's preview and save (via render3mf above, and editor.js's transport
+// arms), openscad.js's load, and its source resolution for a ServiceError (the host's own refusals
+// there already arrive as sentences). Three answers, by status:
+//
+//   - 503, or a 404 carrying no words of the sidecar's own: the service is not there. The host's
+//     proxy answers a BODY-LESS 404 for a sidecar it has no URL for, one it cannot reach and one
+//     that timed out (Tools::AddonsController#service), so a bare 404 means "not configured or not
+//     running", never "no such thing".
+//   - any other 4xx, or a 404 the sidecar wrote words into: it answered and named the problem.
+//     coerce.py's "b: expected a number, got 'wide'" names the parameter to fix, which a status code
+//     never could; app.py's 404 {"error": "unknown generator"} proves the service IS running. Its
+//     words, verbatim.
+//   - anything else — a 5xx, an HTML error page, the SDK's network_error raised before any response
+//     existed, a bug in this bundle: no answer came back, and "try again" is the only advice that is
+//     true of all of them.
+//
+// THE RAW TEXT GOES TO THE CONSOLE EXACTLY WHEN THE SCREEN REPLACES IT, so it is never lost — and is
+// not logged when the sidecar's own words are what the screen shows: a refused value is an ordinary
+// answer, not a console error.
+const TITLE = "OpenSCAD"
+
+export function serviceFailure(error) {
+  const status = error instanceof ServiceError ? error.status : null
+  const words = status === null ? "" : sidecarWords(error.body)
+  if (words && status >= 400 && status < 500) return words
+  console.error(`${TITLE}: a service call failed.`, error)
+  if (status === 404 || status === 503) {
+    return `The ${TITLE} service is not running on this server right now.`
+  }
+  return `${TITLE} could not answer; try again in a moment.`
+}
+
+// The sidecar's own sentence, or "" when the body holds none. The parse belongs HERE, in the one
+// place the sidecar's shape is known: ServiceError deliberately keeps the raw text rather than a
+// parsed body, because a failure through this proxy may not be JSON at all. app.py writes JSON
+// ({"error": "…", "code": "…"}) — JSON WITHOUT a string `error` is a shape we do not know, and
+// showing it raw would put braces in front of a maker. Plain text is the sidecar's own words; markup
+// is not (a Werkzeug HTML 405 page for a GET at a POST-only route is a page, not a sentence).
+function sidecarWords(text) {
+  const raw = String(text ?? "").trim()
   try {
-    const body = JSON.parse(error.body)
-    if (typeof body?.error === "string" && body.error.trim()) return body.error
-  } catch (_e) { /* not JSON — the raw text is still the sidecar's own words */ }
-  return error.message.trim() || `The generator failed (${error.status}).`
+    const body = JSON.parse(raw)
+    return typeof body?.error === "string" ? body.error.trim() : ""
+  } catch (_e) { /* not JSON — plain text may still be the sidecar's own words */ }
+  return raw.startsWith("<") ? "" : raw
 }
