@@ -31,7 +31,14 @@ addons/
   manifests.json       # Array of addon manifests — the index Rails reads (see below)
   <key>/
     <entry>.js          # the addon's default export, mount(element, context)
+    <key>_core.js       # the newer tools: the pure half (geometry, parsing, tables), unit-tested
+    lib -> ../_lib      # the newer tools: a symlink, so `./lib/mesh.js` resolves inside the proxy's prefix
     ...                 # any pinned dependency modules the entry imports
+  _lib/                # the shared library (mesh, SVG, UI widgets, save panel, file opener, units,
+                       # fastener tables, vendored earcut) — not an addon; reached only through the symlinks
+package.json            # ONLY `"type": "module"`, so node runs the tests as ESM; no dependencies, no build
+bin/test                # node --test test/unit/ + the two shell tests (see Testing)
+test/unit/              # node:test files over the pure modules; test/support/ holds the stub DOM and SDK
 Dockerfile              # nginx:1.27-alpine, COPYs addons/ in, nothing else
 nginx.conf               # static file serving + Cache-Control: no-cache + /health
 bin/new-addon             # scaffold addons/<key>/<key>.js + its manifests.json entry (Quick start, below)
@@ -91,6 +98,8 @@ Optional:
 | `services` | array of strings | Sidecar names this addon may reach through the host's proxy (see `ctx.serviceUrl` below). The host's own `ENV` says WHERE each named service lives (`<NAME>_SIDECAR_URL`); the manifest only says WHICH names this addon is allowed to ask for — a manifest-supplied URL would be an SSRF primitive aimed at the host's internal network, so the manifest never carries one. |
 | `min_host` | integer | The lowest host `level` this bundle works against. A host below it lists the addon **greyed out with a reason**; a host that predates the key ignores it entirely — see the caveat under "The bundle itself". Must be a bare JSON number: `"1"` the string is silently ignored. |
 | `permissions` | array of objects | `{"name": …, "reasoning": …}`. **Displayed to the operator on the gallery card and the addon page, never enforced** — nothing on the server refuses a request because of it. It is where scope drift becomes visible in a deployment where republishing a bundle *is* the deploy. A bare string instead of an object is dropped silently. |
+| `opens` | array of strings | The file extensions this tool can open (`[".gcode", ".nc"]`; a leading dot is optional, case is folded). A file page in the library then offers "Open in <title>", which opens `/tools/<key>?file=<id>`; the host hands the file to the bundle as `host.launch.fileId` and `fileName` (host level 4), and the shared `open_file.js` reads it on mount. Declare `library:read` too, or the read answers 403. |
+| `category` | string | `"generate"` (makes a file), `"inspect"` (reads one) or `"reference"` (numbers and lookups). Groups the gallery into sections; the New ▾ menu lists only `generate` and uncategorised tools. Anything else reads as absent. |
 
 This table is not exhaustive — `layout`, `states_key`, `shares_states_with`, `version`, `author`,
 `license` and `homepage` are also read. `docs/addon-api-v1.md` in the tinkerex repo is the complete
@@ -215,6 +224,36 @@ Two complete, working examples ship in this repo:
   and preserving DOM state (`<details>` open/closed) across page loads via `localStorage`. Nothing in
   it reads `ctx.serviceUrl` or `ctx.csrfToken` any more — the only raw `ctx` values left are the two
   destination keys (`defaultFolder`, `defaultFolderLabel`), which have no SDK accessor by design.
+
+### The shared library: `addons/_lib/`
+
+The sixteen tools added in November 2026 (gears, hole patterns, surface patterns, test pieces,
+labels, text outlines, simple parts, lithophanes, Gridfinity bins, cut lists, the G-code inspector,
+model stats, the electronics and shop calculators, the fastener reference and the laser settings
+notebook) share one library instead of each carrying a copy. **The asset proxy serves only
+`<key>/<path>` and refuses `..`**, so a bundle cannot import a sibling directory; each of those
+addons therefore holds a symlink `lib -> ../_lib` and imports `./lib/mesh.js`, `./lib/svg.js`,
+`./lib/ui.js`, `./lib/save_panel.js`, `./lib/open_file.js`, `./lib/units.js` and
+`./lib/fasteners_data.js`. Docker's `COPY` keeps the link, nginx follows it, and `addons:check`
+resolves it by realpath inside the source. `_lib` is not an addon: it has no manifest entry.
+
+Each of those tools is split in two: `<key>.js` is the mount (layout, fields, wiring — thin) and
+`<key>_core.js` is pure (no `document`, no `host`), so the geometry, parsing and tables are tested
+under node. The mount uses `mountSavePanel` (name, folder, Save, revisions, the 409/422 sentences)
+and `mountOpenFile` (the `host.launch.fileId` deep link, "Choose from your library", "Choose from
+this device") from the library rather than spelling either again.
+
+### Testing
+
+```sh
+bin/test            # node --test test/unit/  +  test/new_addon_test.sh  +  test/no_gpl_in_bundle_image_test.sh
+node --test test/unit/gears.test.js   # one tool
+```
+
+`test/unit/` holds a `node:test` file per core module and per shared module, and `mounts.test.js`,
+which mounts every tool under a stub DOM and a stub SDK (`test/support/`) so a mount that throws at
+import or at `mount()` is caught without a browser. There is no npm install: `package.json` exists
+only to make the test files ESM. Node 18 or later.
 
 ## Deploying
 

@@ -7,6 +7,7 @@
     "api_version": "1",
     "entry": "generators.js",
     "min_host": 1,
+    "category": "generate",
     "pins": {
       "makerjs": "makerjs.js",
       "bezier-js": "bezier-js.js",
@@ -29,6 +30,7 @@
     "api_version": "1",
     "entry": "boxes.js",
     "min_host": 3,
+    "category": "generate",
     "services": [
       "boxes"
     ],
@@ -52,6 +54,7 @@
     "api_version": "1",
     "entry": "openscad.js",
     "min_host": 2,
+    "category": "generate",
     "services": [
       "openscad"
     ],
@@ -72,6 +75,332 @@
       {
         "name": "service:openscad",
         "reasoning": "Renders every model: OpenSCAD runs as a separate service, and its 3MF is what the preview shows and what gets saved."
+      }
+    ]
+  },
+  {
+    "key": "gears",
+    "title": "Gear Generator",
+    "icon": "⚙️",
+    "description": "Involute spur gears, racks and meshing pairs, as SVG for the laser or STL for the printer",
+    "api_version": "1",
+    "entry": "gears.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the gear it draws as an SVG or an STL, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "hole-patterns",
+    "title": "Hole Pattern",
+    "icon": "🎯",
+    "description": "Bolt circles, grids and lines of holes sized from the fastener tables — a drilling template or a plate",
+    "api_version": "1",
+    "entry": "hole-patterns.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the template as an SVG, or the plate as an STL, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "patterns",
+    "title": "Surface Patterns",
+    "icon": "🕸️",
+    "description": "Living hinges, honeycombs and slot grids cut to a panel size",
+    "api_version": "1",
+    "entry": "patterns.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the pattern it draws as an SVG, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "test-pieces",
+    "title": "Test Pieces",
+    "icon": "🧪",
+    "description": "Kerf combs and joint-fit tests for the laser; tolerance and heat-set insert tests for the printer",
+    "api_version": "1",
+    "entry": "test-pieces.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the test piece as an SVG or an STL, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "labels",
+    "title": "Labels",
+    "icon": "🏷️",
+    "description": "Bin and drawer labels, with an optional QR code, laid out on a sheet",
+    "api_version": "1",
+    "entry": "labels.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves each sheet of labels as an SVG, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "text-outline",
+    "title": "Text to Outline",
+    "icon": "🔤",
+    "description": "Text set in a font from your library, as SVG outlines for cutting or engraving",
+    "api_version": "1",
+    "entry": "text-outline.js",
+    "min_host": 3,
+    "category": "generate",
+    "opens": [
+      ".ttf",
+      ".otf"
+    ],
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:read",
+        "reasoning": "Reads the font file you pick from your library, to draw the letters."
+      },
+      {
+        "name": "library:write",
+        "reasoning": "Saves the outlines as an SVG, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "parts",
+    "title": "Simple Parts",
+    "icon": "🔩",
+    "description": "Spacers, washers, tubes and plates with corner holes, as STL",
+    "api_version": "1",
+    "entry": "parts.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the part as an STL, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "lithophane",
+    "title": "Lithophane",
+    "icon": "🖼️",
+    "description": "A photo becomes a printable relief: darker is thicker",
+    "api_version": "1",
+    "entry": "lithophane.js",
+    "min_host": 3,
+    "category": "generate",
+    "opens": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".webp",
+      ".bmp"
+    ],
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:read",
+        "reasoning": "Reads the image you pick from your library."
+      },
+      {
+        "name": "library:write",
+        "reasoning": "Saves the lithophane as an STL, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "gridfinity",
+    "title": "Gridfinity Bins",
+    "icon": "🗃️",
+    "description": "Gridfinity-compatible bins and baseplates by the spec's numbers, as STL",
+    "api_version": "1",
+    "entry": "gridfinity.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves the bin or baseplate as an STL, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "cut-list",
+    "title": "Cut List",
+    "icon": "📐",
+    "description": "Lengths from stock and rectangles from sheets, with a kerf — diagrams and a cut list",
+    "api_version": "1",
+    "entry": "cut-list.js",
+    "min_host": 3,
+    "category": "generate",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Saves one SVG diagram per sheet or stock piece and a CSV cut list, into the library folder you pick."
+      }
+    ]
+  },
+  {
+    "key": "gcode",
+    "title": "G-code Inspector",
+    "icon": "🧭",
+    "description": "Layers, time, filament, temperatures and a layer-by-layer preview of a G-code file",
+    "api_version": "1",
+    "entry": "gcode.js",
+    "min_host": 2,
+    "category": "inspect",
+    "opens": [
+      ".gcode",
+      ".gco",
+      ".nc",
+      ".tap",
+      ".ngc"
+    ],
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:read",
+        "reasoning": "Reads the G-code file you open or pick from your library."
+      },
+      {
+        "name": "library:write",
+        "reasoning": "Saves a summary of the file as Markdown beside it, only when you ask."
+      }
+    ]
+  },
+  {
+    "key": "mesh-info",
+    "title": "Model Stats and Print Cost",
+    "icon": "📊",
+    "description": "Volume, size and watertightness of an STL, 3MF or OBJ, and what a print of it will cost",
+    "api_version": "1",
+    "entry": "mesh-info.js",
+    "min_host": 2,
+    "category": "inspect",
+    "opens": [
+      ".stl",
+      ".3mf",
+      ".obj"
+    ],
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:read",
+        "reasoning": "Reads the model file you open or pick from your library."
+      },
+      {
+        "name": "library:write",
+        "reasoning": "Saves a cost sheet as Markdown beside the model, only when you ask."
+      }
+    ]
+  },
+  {
+    "key": "electronics",
+    "title": "Electronics Calculators",
+    "icon": "🔌",
+    "description": "Resistor and capacitor codes, standard values, dividers, LED resistors, Ohm's law, wire gauge and voltage drop",
+    "api_version": "1",
+    "entry": "electronics.js",
+    "min_host": 1,
+    "category": "reference",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT"
+  },
+  {
+    "key": "shop-math",
+    "title": "Shop Calculators",
+    "icon": "🧮",
+    "description": "Feeds and speeds, steps per mm, belt lengths, gear ratios, compound miters, board feet, shelf sag and unit conversions",
+    "api_version": "1",
+    "entry": "shop-math.js",
+    "min_host": 1,
+    "category": "reference",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT"
+  },
+  {
+    "key": "fasteners",
+    "title": "Fastener Reference",
+    "icon": "🔧",
+    "description": "Tap drills, clearance holes, nuts, heads, hex keys and heat-set insert holes, metric and unified",
+    "api_version": "1",
+    "entry": "fasteners.js",
+    "min_host": 1,
+    "category": "reference",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT"
+  },
+  {
+    "key": "laser-settings",
+    "title": "Laser Settings Notebook",
+    "icon": "📓",
+    "description": "The power, speed and passes that worked, per machine, material and thickness — searchable, and kept as a CSV in your library",
+    "api_version": "1",
+    "entry": "laser-settings.js",
+    "min_host": 3,
+    "category": "reference",
+    "version": "1.0.0",
+    "author": "Charles Schwartz",
+    "license": "MIT",
+    "permissions": [
+      {
+        "name": "library:write",
+        "reasoning": "Keeps the notebook as one CSV file in your library, rewritten in place on every save."
       }
     ]
   }
