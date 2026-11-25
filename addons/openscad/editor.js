@@ -76,12 +76,19 @@ function formatBytes(bytes) {
 // onReload(prefillValues): reopen THIS editor with those values prefilled.
 export function mountEditor(root, { source, states, ctx, prefillValues, onBack, onSaved, onReload }) {
   root.innerHTML = `
+    <!-- UP TO THE GALLERY, AT THE LEFT AND NAMED FOR WHERE IT GOES (2026-11-24). It was a "Back" at
+         the right of this head. The host's top bar now carries the one Back, which steps back
+         through PAGES; this goes up inside the tool, to its list of generators, and a second
+         control called Back that did something else was the inconsistency the owner asked to end.
+         It matters more now that the host keeps a tool for 15 minutes: the tool's own link returns
+         to this editor, so this is the way back to the gallery. The inline margin lines the
+         button's text up with the title under it; no host class does that. -->
+    <p style="margin:0 0 4px -15px"><button type="button" class="btn ghost" data-role="back">← All generators</button></p>
     <div class="page-head">
       <div>
         <h1 data-role="title"></h1>
         <p class="page-subtitle muted" data-role="subtitle"></p>
       </div>
-      <button type="button" class="btn ghost" data-role="back">Back</button>
     </div>
 
     <div class="box-editor">
